@@ -16,6 +16,8 @@
 - `npm run demo:up` / `demo:seed` / `demo:down` y `docs/DEMO.md` (dónde correrlo y guion).
 - Corrección: un dispositivo nuevo ya no "des-completa" el alta del negocio en el servidor.
 
+- Despliegue en línea con `render.yaml` (Blueprint) y carga automática de la demo (`DEMO_AUTOSEED`). La API acepta `PORT` y usa `RENDER_EXTERNAL_URL` para los enlaces públicos.
+
 **Técnico**
 - Migración 009: `stock_qty`, `min_stock`, `stock_movements`, `receivable_payments`, medio de pago `CREDITO`.
 - Endpoints: `/v1/insights`, `/v1/receivables`, `/v1/receivables/:id/payments`, `/v1/products/:id/stock`, `/v1/products/:id/movements`, `DELETE /v1/products/:id`.

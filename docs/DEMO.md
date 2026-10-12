@@ -41,13 +41,20 @@ npm run dev                              # API + web en http://localhost:4000
 npm run demo:seed
 ```
 
-### C. En la nube (HTTPS)
+### C. En línea con HTTPS (Render, ~10 minutos)
 
-1. Crea una base PostgreSQL administrada (Render, Railway, Neon, Supabase…) y copia su `DATABASE_URL`.
-2. Crea un servicio web desde este repositorio usando `infra/Dockerfile` (puerto 4000, health check `/health`).
-3. Variables de entorno: `DATABASE_URL`, `DB_AUTO_MIGRATE=true`, `JWT_SECRET` (cadena larga aleatoria), `BILLING_PROVIDER=mock`, `DELIVERY_PROVIDER=mock`, `PUBLIC_APP_BASE_URL=https://tu-dominio`, `PUBLIC_RECEIPT_LINK_SECRET` (otra cadena larga), `NODE_ENV=development` (en `production` el simulador exige `ALLOW_MOCK_BILLING=true`, que es el valor por defecto).
-4. Una vez arriba, desde tu PC: `DEMO_API_URL=https://tu-dominio DATABASE_URL=<la de la base> npm run demo:seed`.
-5. En el celular abre el enlace y usa "Agregar a pantalla de inicio": queda como app instalada.
+El repositorio trae `render.yaml` (Blueprint): crea el servicio web, la base PostgreSQL y las claves secretas, y **carga la demo sola** en el primer arranque (`DEMO_AUTOSEED=true`).
+
+1. Entra a https://render.com y crea una cuenta con GitHub.
+2. **New → Blueprint** → conecta el repositorio `VyperDesign-PE/FAKTU` y elige la rama `faktu-0.13-estabilizacion` (o `main` una vez fusionada).
+3. Render lee `render.yaml`; confirma con **Apply**. La primera construcción tarda unos 5–8 minutos.
+4. Abre la URL `https://faktu-xxxx.onrender.com` e ingresa con `demo@faktu.pe` / `Demo-Faktu-2026`.
+5. En el celular abre el mismo enlace y usa "Agregar a pantalla de inicio" para instalarla como app.
+6. Dominio propio (opcional): Settings → Custom Domains → `app.tudominio.pe`.
+
+Notas del plan gratuito de Render: el servicio se duerme tras ~15 min sin visitas (el primer acceso tarda 30–60 s: ábrelo antes de presentar) y la base gratuita caduca a los 30 días. Para un piloto con clientes reales usa el plan de pago (~US$ 7 web + ~US$ 6 base) y desactiva la carga automática de la demo quitando `DEMO_AUTOSEED`.
+
+Otras plataformas (Railway, Fly.io, un VPS): usa `infra/Dockerfile`, puerto 4000, health check `/health` y las mismas variables que `render.yaml`; define `PUBLIC_APP_BASE_URL=https://tu-dominio`.
 
 > Para el piloto real (facturación con SUNAT) sigue `docs/PILOTO.md`: ahí se configura APIsPERU y se desactiva el modo práctica por negocio.
 

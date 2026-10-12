@@ -80,6 +80,9 @@ export function verifyReceiptLinkToken(token: string, expectedPurpose: ReceiptLi
 export function publicBaseUrl() {
   const configured = process.env.PUBLIC_APP_BASE_URL?.trim().replace(/\/$/, "");
   if (configured) return configured;
+  // Render expone su URL pública automáticamente.
+  const hosted = process.env.RENDER_EXTERNAL_URL?.trim().replace(/\/$/, "");
+  if (hosted) return hosted;
   const port = Number(process.env.API_PORT ?? 4000);
   return `http://localhost:${port}`;
 }

@@ -950,8 +950,16 @@ if (webDist && existsSync(resolve(webDist, "index.html"))) {
   app.log.info({ webDist }, "serving FAKTU web app");
 }
 
-const port = Number(process.env.API_PORT ?? 4000);
+const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
+
+// Demo en línea: carga el negocio de ejemplo la primera vez (idempotente).
+if ((process.env.DEMO_AUTOSEED ?? "").toLowerCase() === "true") {
+  import("./modules/demo/demoData.js")
+    .then(({ seedDemo }) => seedDemo(`http://127.0.0.1:${port}`))
+    .then((created) => app.log.info(created ? "demo cargada" : "demo ya estaba cargada"))
+    .catch((error) => app.log.error({ error: String(error) }, "no se pudo cargar la demo"));
+}
 
 // Reintentos/conciliación en el servidor para comprobantes que quedaron
 // pendientes (respuesta perdida, proveedor caído), sin depender del celular.
