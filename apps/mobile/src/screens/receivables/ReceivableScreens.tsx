@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   sub: { color: theme.colors.muted, fontSize: 12.5, lineHeight: 18 },
   balance: { color: theme.colors.text, fontWeight: "900", fontSize: 22 },
   actions: { flexDirection: "row", gap: 10 },
-  pay: { gap: 10, backgroundColor: "#F8F7FF", borderRadius: 14, padding: 12 },
+  pay: { gap: 10, backgroundColor: theme.colors.hover, borderRadius: 14, padding: 12 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   sale: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
   saleText: { color: theme.colors.muted, fontSize: 13 }

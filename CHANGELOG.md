@@ -11,6 +11,11 @@
 - PC / all-in-one: menú lateral, tablas con búsqueda y filtros (Todos, Por revisar, Fiados, Anulados), columnas de contenido centradas. Celular: barra inferior con 5 pestañas.
 - Se retiraron los productos de ejemplo que se sembraban en cuentas nuevas.
 
+**Modo claro / oscuro y demo**
+- Modo claro y oscuro (web: botón en el menú y sigue al sistema; celular: sigue al sistema). Marca escrita "Faktu" con isotipo "F".
+- `npm run demo:up` / `demo:seed` / `demo:down` y `docs/DEMO.md` (dónde correrlo y guion).
+- Corrección: un dispositivo nuevo ya no "des-completa" el alta del negocio en el servidor.
+
 **Técnico**
 - Migración 009: `stock_qty`, `min_stock`, `stock_movements`, `receivable_payments`, medio de pago `CREDITO`.
 - Endpoints: `/v1/insights`, `/v1/receivables`, `/v1/receivables/:id/payments`, `/v1/products/:id/stock`, `/v1/products/:id/movements`, `DELETE /v1/products/:id`.

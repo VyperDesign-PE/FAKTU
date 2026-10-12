@@ -17,6 +17,7 @@
     "test:integration": "tsx src/tests/receiptIssuer.integration.ts",
     "test:nubefact": "tsx src/tests/nubefact.ts",
     "ops:activation": "tsx src/jobs/activationInfo.ts",
+    "demo:seed": "tsx src/jobs/demoSeed.ts",
     "test:apisperu": "tsx src/tests/apisperu.ts"
   },
   "dependencies": {

@@ -44,7 +44,7 @@ export function ProductosScreen({ navigation }: P<"Productos">) {
         {list.map((product) => {
           const stock = stockLabel(product);
           return (
-            <Pressable key={product.id} accessibilityRole="button" onPress={() => navigation.navigate("ProductForm", { productId: product.id })} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.row, hovered && { backgroundColor: "#FBF9FF" }]}>
+            <Pressable key={product.id} accessibilityRole="button" onPress={() => navigation.navigate("ProductForm", { productId: product.id })} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.row, hovered && { backgroundColor: theme.colors.hover }]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>{product.favorite ? "★ " : ""}{product.name}</Text>
                 <Text style={styles.muted}>S/ {product.unitPrice.toFixed(2)}</Text>

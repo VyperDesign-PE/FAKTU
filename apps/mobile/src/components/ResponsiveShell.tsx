@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { theme } from "../theme";
+import { effectiveScheme, getThemeMode, setThemeMode, theme } from "../theme";
 import { BrandLogo } from "./Brand";
 
 export type MainRouteName = "Dashboard" | "POSVenta" | "HistorialComprobantes" | "Productos" | "PorCobrar" | "Configuracion";
@@ -27,6 +28,23 @@ const NAV_ITEMS: Array<{ route: MainRouteName; label: string; shortLabel: string
   { route: "Productos", label: "Productos y stock", shortLabel: "Productos", icon: "▤", bottom: true },
   { route: "Configuracion", label: "Más opciones", shortLabel: "Más", icon: "⋯", bottom: false }
 ];
+
+/** Alterna claro/oscuro (solo web; en el celular se sigue el modo del sistema). */
+function ThemeToggle({ compact }: { compact?: boolean }) {
+  const [scheme, setScheme] = useState<"light" | "dark">(() => effectiveScheme(getThemeMode()));
+  if (Platform.OS !== "web") return null;
+  const next = scheme === "dark" ? "light" : "dark";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={scheme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+      onPress={() => { setThemeMode(next); setScheme(next); }}
+      style={compact ? styles.topAction : styles.themeBtn}
+    >
+      <Text style={compact ? styles.topActionText : styles.themeBtnText}>{scheme === "dark" ? "☀️" : "🌙"}{compact ? "" : scheme === "dark" ? "  Modo claro" : "  Modo oscuro"}</Text>
+    </Pressable>
+  );
+}
 
 export function ResponsiveShell({ currentRoute, navigation, children, title, subtitle, action, fill }: Props) {
   const { width } = useWindowDimensions();
@@ -56,6 +74,7 @@ export function ResponsiveShell({ currentRoute, navigation, children, title, sub
             ))}
           </View>
 
+          <ThemeToggle />
           <View style={styles.sidebarFooter}>
             <Text style={styles.sidebarFooterTitle} numberOfLines={1}>{businessName}</Text>
             <View style={styles.statusRow}>
@@ -67,9 +86,12 @@ export function ResponsiveShell({ currentRoute, navigation, children, title, sub
       ) : (
         <View style={styles.topBar}>
           <BrandLogo size={30} light />
+          <View style={{ flexDirection: "row", gap: 8 }}>
+          <ThemeToggle compact />
           <Pressable accessibilityRole="button" accessibilityLabel="Más opciones" onPress={() => navigation.navigate("Configuracion")} style={styles.topAction}>
             <Text style={styles.topActionText}>⚙</Text>
           </Pressable>
+          </View>
         </View>
       )}
 
@@ -131,7 +153,9 @@ const styles = StyleSheet.create({
   navLabel: { color: "#C9CCE8", fontWeight: "700" },
   navTextActive: { color: "#FFFFFF" },
   activeText: { color: theme.colors.primary },
-  sidebarFooter: { marginTop: "auto", borderRadius: 14, padding: 14, backgroundColor: theme.colors.inkSoft, gap: 6 },
+  themeBtn: { marginTop: "auto", minHeight: 42, borderRadius: 12, paddingHorizontal: 12, justifyContent: "center", backgroundColor: theme.colors.inkSoft },
+  themeBtnText: { color: "#C9CCE8", fontWeight: "700" },
+  sidebarFooter: { marginTop: 0, borderRadius: 14, padding: 14, backgroundColor: theme.colors.inkSoft, gap: 6 },
   sidebarFooterTitle: { color: "#FFFFFF", fontWeight: "800" },
   sidebarFooterText: { color: "#A9AED3", fontSize: 12 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },

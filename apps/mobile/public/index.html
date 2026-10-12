@@ -6,20 +6,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>FAKTU</title>
     <meta name="description" content="Boletas y facturas electrónicas para tu negocio." />
+    <meta name="theme-color" content="#12163A" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="FAKTU" />
     <style id="expo-reset">
+      :root {
+        --f-background: #F6F7FB;
+        --f-surface: #FFFFFF;
+        --f-hover: #FBF9FF;
+        --f-tableHead: #F8F9FC;
+        --f-primary: #5B2FD5;
+        --f-primaryDark: #4421AE;
+        --f-primarySoft: #EFE9FF;
+        --f-ink: #12163A;
+        --f-inkSoft: #1C2150;
+        --f-mint: #19C58B;
+        --f-success: #169B52;
+        --f-successSoft: #EEF9F1;
+        --f-successBorder: #BFE5C9;
+        --f-warning: #B26A00;
+        --f-warningSoft: #FFF7E5;
+        --f-warningBorder: #F3D28A;
+        --f-danger: #B42318;
+        --f-dangerSoft: #FFF1F0;
+        --f-dangerBorder: #F2B8B5;
+        --f-infoSoft: #F2F5FF;
+        --f-infoBorder: #CCD8FB;
+        --f-mutedSoft: #EEF0F5;
+        --f-text: #141A3A;
+        --f-muted: #6B7289;
+        --f-border: #E3E5EE;
+        --f-blue: #2269D8;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --f-background: #0B0E24;
+          --f-surface: #151A3B;
+          --f-hover: #1C2250;
+          --f-tableHead: #1A2046;
+          --f-primary: #7C5CFF;
+          --f-primaryDark: #6240F0;
+          --f-primarySoft: #2A2260;
+          --f-ink: #0F1230;
+          --f-inkSoft: #1D2354;
+          --f-mint: #19C58B;
+          --f-success: #3DD68C;
+          --f-successSoft: #12301F;
+          --f-successBorder: #1F5236;
+          --f-warning: #F5B544;
+          --f-warningSoft: #33280E;
+          --f-warningBorder: #5C4818;
+          --f-danger: #FF7A70;
+          --f-dangerSoft: #3A1815;
+          --f-dangerBorder: #6A2B26;
+          --f-infoSoft: #182450;
+          --f-infoBorder: #2C3F85;
+          --f-mutedSoft: #232A57;
+          --f-text: #ECEEFB;
+          --f-muted: #9AA1C7;
+          --f-border: #2A3166;
+          --f-blue: #6EA3FF;
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme="dark"] {
+        --f-background: #0B0E24;
+        --f-surface: #151A3B;
+        --f-hover: #1C2250;
+        --f-tableHead: #1A2046;
+        --f-primary: #7C5CFF;
+        --f-primaryDark: #6240F0;
+        --f-primarySoft: #2A2260;
+        --f-ink: #0F1230;
+        --f-inkSoft: #1D2354;
+        --f-mint: #19C58B;
+        --f-success: #3DD68C;
+        --f-successSoft: #12301F;
+        --f-successBorder: #1F5236;
+        --f-warning: #F5B544;
+        --f-warningSoft: #33280E;
+        --f-warningBorder: #5C4818;
+        --f-danger: #FF7A70;
+        --f-dangerSoft: #3A1815;
+        --f-dangerBorder: #6A2B26;
+        --f-infoSoft: #182450;
+        --f-infoBorder: #2C3F85;
+        --f-mutedSoft: #232A57;
+        --f-text: #ECEEFB;
+        --f-muted: #9AA1C7;
+        --f-border: #2A3166;
+        --f-blue: #6EA3FF;
+        color-scheme: dark;
+      }
       html, body { height: 100%; }
-      body { overflow: hidden; background: #F7F8FC; }
+      body { overflow: hidden; background: var(--f-background); color: var(--f-text); }
       #root { display: flex; height: 100%; flex: 1; }
     </style>
   </head>
   <body>
     <noscript>Activa JavaScript para usar FAKTU.</noscript>
     <div id="root"></div>
+    <script>
+      // Aplica el modo elegido antes de pintar para evitar el parpadeo claro/oscuro.
+      try {
+        var saved = localStorage.getItem("faktu_theme_mode");
+        if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+      } catch (e) {}
+    </script>
     <script>
       if ("serviceWorker" in navigator && location.protocol === "https:") {
         window.addEventListener("load", function () {

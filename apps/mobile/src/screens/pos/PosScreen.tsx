@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   quickBox: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 16, padding: 14, gap: 10 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingBottom: 90 },
   tile: { width: "31.5%", minWidth: 120, flexGrow: 1, minHeight: 104, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, justifyContent: "space-between" },
-  tileHover: { borderColor: theme.colors.primary, backgroundColor: "#FBF9FF" },
+  tileHover: { borderColor: theme.colors.primary, backgroundColor: theme.colors.hover },
   tileActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
   tileName: { color: theme.colors.text, fontWeight: "800", paddingRight: 22 },
   tilePrice: { color: theme.colors.primary, fontWeight: "900", fontSize: 16 },

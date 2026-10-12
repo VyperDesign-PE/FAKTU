@@ -24,6 +24,9 @@
     "build:web": "npm --workspace @app/mobile run build:web",
     "dev:web": "npm --workspace @app/mobile run web",
     "ops:activation": "npm --workspace @app/api run ops:activation --",
+    "demo:seed": "npm --workspace @app/api run demo:seed",
+    "demo:up": "docker compose -f infra/docker-compose.demo.yml up --build -d",
+    "demo:down": "docker compose -f infra/docker-compose.demo.yml down -v",
     "test:apisperu": "npm --workspace @app/api run test:apisperu"
   }
 }

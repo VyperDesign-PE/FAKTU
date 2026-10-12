@@ -91,7 +91,7 @@ export function ReceiptList({ onOpen }: { onOpen: (clientTransactionId: string) 
       {wide ? <View style={[styles.tr, styles.th]}>
         <Text style={[styles.thText, { flex: 1.3 }]}>Comprobante</Text><Text style={[styles.thText, { flex: 1.6 }]}>Cliente</Text><Text style={[styles.thText, { flex: 0.9 }]}>Pago</Text><Text style={[styles.thText, { flex: 1.1 }]}>Fecha</Text><Text style={[styles.thText, { flex: 0.9, textAlign: "right" }]}>Total</Text><Text style={[styles.thText, { flex: 1, textAlign: "right" }]}>Estado</Text>
       </View> : null}
-      {visible.map((row) => <Pressable key={row.key} accessibilityRole="button" onPress={() => onOpen(row.clientTransactionId)} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.tr, hovered && { backgroundColor: "#FBF9FF" }]}>
+      {visible.map((row) => <Pressable key={row.key} accessibilityRole="button" onPress={() => onOpen(row.clientTransactionId)} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.tr, hovered && { backgroundColor: theme.colors.hover }]}>
         {wide ? <>
           <View style={{ flex: 1.3 }}><Text style={styles.tdStrong}>{row.number}</Text><Text style={styles.tdMuted}>{row.doc}</Text></View>
           <Text style={[styles.td, { flex: 1.6 }]} numberOfLines={1}>{row.customer}</Text>
@@ -112,7 +112,7 @@ export function ReceiptList({ onOpen }: { onOpen: (clientTransactionId: string) 
 }
 
 function StatePill({ tone, text }: { tone: Row["tone"]; text: string }) {
-  const palette = { ok: [theme.colors.successSoft, theme.colors.success], warn: [theme.colors.warningSoft, theme.colors.warning], bad: [theme.colors.dangerSoft, theme.colors.danger], muted: ["#EEF0F5", theme.colors.muted] }[tone];
+  const palette = { ok: [theme.colors.successSoft, theme.colors.success], warn: [theme.colors.warningSoft, theme.colors.warning], bad: [theme.colors.dangerSoft, theme.colors.danger], muted: [theme.colors.mutedSoft, theme.colors.muted] }[tone];
   return <View style={{ backgroundColor: palette[0], paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 }}><Text style={{ color: palette[1], fontWeight: "800", fontSize: 11.5 }}>{text}</Text></View>;
 }
 
@@ -358,11 +358,11 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   table: { backgroundColor: theme.colors.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
   tr: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-  th: { minHeight: 42, backgroundColor: "#F8F9FC" },
+  th: { minHeight: 42, backgroundColor: theme.colors.tableHead },
   thText: { color: theme.colors.muted, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 },
   td: { color: theme.colors.text },
   tdStrong: { color: theme.colors.text, fontWeight: "800" },
   tdMuted: { color: theme.colors.muted, fontSize: 12.5, fontWeight: "500" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "900", color: theme.colors.text }, price: { fontWeight: "900", color: theme.colors.primary, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: theme.colors.surface, borderRadius: 15, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "900", color: theme.colors.text }, price: { fontWeight: "900", color: theme.colors.primary, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
   statusTitle: { color: theme.colors.text, fontSize: 19, fontWeight: "900", textAlign: "center" }, body: { color: theme.colors.muted, lineHeight: 20 }, error: { color: theme.colors.danger, fontWeight: "700" }, supportTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 }, chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
 });

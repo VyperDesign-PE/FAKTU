@@ -1,5 +1,7 @@
 # FAKTU
 
+> **Demo en minutos:** `npm run demo:up` y `npm run demo:seed` — ver [docs/DEMO.md](docs/DEMO.md).
+
 Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App web/móvil (React Native + Expo, PWA), API (Fastify + PostgreSQL) y facturación electrónica con APIsPERU o Nubefact mediante adaptadores desacoplados.
 
 ## Versión actual: 0.16.0 — lista para el piloto

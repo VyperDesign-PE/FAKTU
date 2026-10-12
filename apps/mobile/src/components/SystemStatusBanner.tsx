@@ -22,12 +22,12 @@ export function SystemStatusBanner({ online, pendingCount, onPress }: Props) {
 
 const styles = StyleSheet.create({
   box: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, borderWidth: 1 },
-  ok: { backgroundColor: theme.colors.successSoft, borderColor: "#BFE5C9" },
-  offline: { backgroundColor: theme.colors.warningSoft, borderColor: "#F3D28A" },
-  pending: { backgroundColor: theme.colors.warningSoft, borderColor: "#F3D28A" },
-  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "white", alignItems: "center", justifyContent: "center" },
-  iconText: { fontSize: 20, fontWeight: "800" },
+  ok: { backgroundColor: theme.colors.successSoft, borderColor: theme.colors.successBorder },
+  offline: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
+  pending: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
+  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: theme.colors.surface, alignItems: "center", justifyContent: "center" },
+  iconText: { color: theme.colors.text, fontSize: 20, fontWeight: "800" },
   title: { fontWeight: "800", fontSize: 15, color: theme.colors.text },
   body: { color: theme.colors.muted, marginTop: 3, lineHeight: 18 },
-  arrow: { fontSize: 28, color: "#596078" }
+  arrow: { fontSize: 28, color: theme.colors.muted }
 });

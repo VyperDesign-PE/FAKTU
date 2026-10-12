@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   barLabel: { color: "#8D93C4", fontSize: 11, fontWeight: "800" },
   sideCards: { flexGrow: 1, flexBasis: 240, gap: 12 },
   miniCard: { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16, justifyContent: "center" },
-  miniWarn: { backgroundColor: theme.colors.warningSoft, borderColor: "#F3D28A" },
+  miniWarn: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
   topRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   topRank: { width: 22, height: 22, borderRadius: 11, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, textAlign: "center", fontWeight: "900", fontSize: 12, lineHeight: 22 },
   topValue: { color: theme.colors.text, fontWeight: "800" },

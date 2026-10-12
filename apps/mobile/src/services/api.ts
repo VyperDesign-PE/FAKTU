@@ -160,7 +160,8 @@ export async function updateRemoteBusiness(profile: BusinessProfile) {
       address: profile.address,
       phone: profile.phone,
       taxpayerStatus: profile.taxpayerStatus,
-      onboardingComplete: profile.onboardingComplete
+      // Un dispositivo nuevo (perfil local vacío) nunca debe "des-completar" el alta hecha en otro.
+      ...(profile.onboardingComplete ? { onboardingComplete: true } : {})
     })
   }));
 }

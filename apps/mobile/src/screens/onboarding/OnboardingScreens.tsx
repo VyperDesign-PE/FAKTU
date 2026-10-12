@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
+import { BrandLogo } from "../../components/Brand";
 import { Card, InfoRow, PrimaryButton, TextField } from "../../components/Ui";
 import { useApp } from "../../context/AppContext";
 import { getBillingSettings, lookupTaxpayer, requestOtp, verifyOtp, type BillingSettings } from "../../services/api";
@@ -13,7 +14,7 @@ type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStack
 
 export function WelcomeScreen({ navigation }: P<"Welcome">) {
   return <Screen narrow title="¡Bienvenido!" subtitle="Emite tus boletas y facturas desde tu celular.">
-    <View style={styles.hero}><Text style={styles.heroIcon}>▣</Text><Text style={styles.heroTitle}>FAKTU</Text></View>
+    <View style={styles.hero}><BrandLogo size={64} /></View>
     <Card><Text style={styles.bullet}>✓ Fácil de usar</Text><Text style={styles.bullet}>✓ Pensado para pequeños negocios</Text><Text style={styles.bullet}>✓ Envía por WhatsApp, enlace o PDF</Text><Text style={styles.bullet}>✓ Puedes seguir vendiendo sin Internet</Text></Card>
     <PrimaryButton label="EMPEZAR" onPress={() => navigation.navigate("VerifyPhone")} />
   </Screen>;

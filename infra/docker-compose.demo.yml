@@ -1,0 +1,42 @@
+# Demo de FAKTU con un solo comando (app web + API + PostgreSQL):
+#
+#   npm run demo:up                 # construye y levanta en http://localhost:4000
+#   npm run demo:seed               # carga el negocio de ejemplo (Bodega Don Pepe)
+#   npm run demo:down               # apaga y borra los datos
+#
+# Facturación en modo práctica (simulador): los comprobantes NO tienen validez ante SUNAT.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: faktu_demo
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d faktu_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  faktu:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      API_PORT: 4000
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/faktu_demo
+      DB_AUTO_MIGRATE: "true"
+      JWT_SECRET: demo-jwt-secret-no-usar-en-produccion
+      BILLING_PROVIDER: mock
+      DELIVERY_PROVIDER: mock
+      PUBLIC_APP_BASE_URL: http://localhost:4000
+      PUBLIC_RECEIPT_LINK_SECRET: demo-link-secret-no-usar-en-produccion
+      AUTH_RATE_LIMIT_MAX: "200"
+    depends_on:
+      postgres:
+        condition: service_healthy
