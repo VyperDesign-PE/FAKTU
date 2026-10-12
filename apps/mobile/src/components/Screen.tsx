@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { theme } from "../theme";
 
 type Props = {
@@ -10,14 +10,16 @@ type Props = {
 };
 
 export function Screen({ title, subtitle, children, footer }: Props) {
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, wide && styles.wide]} keyboardShouldPersistTaps="handled">
         {title ? <Text style={styles.title}>{title}</Text> : null}
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         {children}
       </ScrollView>
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {footer ? <View style={[styles.footer, wide && styles.wide]}>{footer}</View> : null}
     </View>
   );
 }
@@ -25,6 +27,7 @@ export function Screen({ title, subtitle, children, footer }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.background },
   content: { padding: 20, gap: 14, flexGrow: 1 },
+  wide: { width: "100%", maxWidth: 880, alignSelf: "center" },
   title: { color: theme.colors.text, fontSize: 25, lineHeight: 31, fontWeight: "900" },
   subtitle: { color: theme.colors.muted, lineHeight: 21, marginTop: -5 },
   footer: { padding: 16, backgroundColor: theme.colors.background }

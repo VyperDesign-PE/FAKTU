@@ -31,8 +31,8 @@ export function ResponsiveShell({ currentRoute, navigation, children, title, sub
           <View style={styles.brandBox}>
             <View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.brandTitle}>Comprobantes Fácil</Text>
-              <Text style={styles.brandSubtitle}>MVP SaaS Perú</Text>
+              <Text style={styles.brandTitle}>FAKTU</Text>
+              <Text style={styles.brandSubtitle}>Facturación electrónica</Text>
             </View>
           </View>
 
@@ -49,8 +49,8 @@ export function ResponsiveShell({ currentRoute, navigation, children, title, sub
           </View>
 
           <View style={styles.sidebarFooter}>
-            <Text style={styles.sidebarFooterTitle}>Estado del sistema</Text>
-            <Text style={styles.sidebarFooterText}>La navegación principal se adapta automáticamente a PC, tablet y celular.</Text>
+            <Text style={styles.sidebarFooterTitle}>¿Necesitas ayuda?</Text>
+            <Text style={styles.sidebarFooterText}>Configuración → Ayuda y estado del sistema.</Text>
           </View>
         </View>
       ) : null}
