@@ -9,6 +9,14 @@ export function isFinalReceiptStatus(status: ReceiptStatus) {
   return status === "ACCEPTED" || status === "REJECTED";
 }
 export type CustomerDocumentType = "DNI" | "RUC";
+export type PaymentMethod = "EFECTIVO" | "YAPE" | "PLIN" | "TARJETA" | "TRANSFERENCIA";
+export const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
+  { value: "EFECTIVO", label: "Efectivo" },
+  { value: "YAPE", label: "Yape" },
+  { value: "PLIN", label: "Plin" },
+  { value: "TARJETA", label: "Tarjeta" },
+  { value: "TRANSFERENCIA", label: "Transferencia" }
+];
 
 export type Product = {
   id: string;
@@ -35,6 +43,9 @@ export type SaleDraft = {
   items: SaleItem[];
   documentType: DocumentType;
   customer?: Customer;
+  paymentMethod: PaymentMethod;
+  /** Monto entregado en efectivo, para calcular el vuelto. */
+  amountReceived?: number;
 };
 
 export type PendingReceipt = {
@@ -45,9 +56,13 @@ export type PendingReceipt = {
   items: SaleItem[];
   customer?: Customer;
   total: number;
+  paymentMethod?: PaymentMethod;
+  amountReceived?: number;
   status: ReceiptStatus;
   errorMessage?: string;
   officialNumber?: string;
+  /** true si lo emitió el simulador: sin validez tributaria. */
+  testMode?: boolean;
 };
 
 export type BusinessProfile = {

@@ -2,6 +2,10 @@ import Fastify from "fastify";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { sql } from "./db/client.js";
 import { runMigrations } from "./db/migrations.js";
@@ -21,8 +25,10 @@ import {
   buildBillingCommand,
   getReceiptById,
   getReceiptByTransaction,
+  CreditNoteError,
   isFinalStatus,
   listReceipts,
+  prepareCreditNote,
   prepareReceipt,
   receiptToApi,
   type ReceiptRecord
@@ -32,6 +38,8 @@ import { priceItems, totalsMatch } from "./modules/receipts/pricing.js";
 import { assertDocumentRules, DocumentRuleError } from "./modules/receipts/documentRules.js";
 import { getMembershipRole } from "./modules/tenants/membershipRepository.js";
 import { hasBillingCredential } from "./modules/billing/secretResolver.js";
+import { createExportToken, dailyClose, limaToday, salesRegisterCsv, verifyExportToken } from "./modules/reports/salesReports.js";
+import { publicBaseUrl } from "./modules/sharing/publicReceiptLinks.js";
 import { getBusiness, updateBusiness } from "./modules/tenants/tenantRepository.js";
 import {
   getBillingConnectionState,
@@ -40,15 +48,28 @@ import {
   updateTenantBillingConfig,
   validProviders
 } from "./modules/billing/tenantBillingConfigRepository.js";
-import type { BillingEnvironment, BillingProviderCode } from "./modules/billing/contracts.js";
-import { createReceiptSharePackage } from "./modules/sharing/receiptSharingService.js";
+import { PAYMENT_METHODS, type BillingEnvironment, type BillingProviderCode } from "./modules/billing/contracts.js";
+import { createReceiptSharePackage, DOCUMENT_LABEL } from "./modules/sharing/receiptSharingService.js";
 import { verifyReceiptLinkToken } from "./modules/sharing/publicReceiptLinks.js";
 import { renderReceiptPdf } from "./modules/sharing/receiptPdf.js";
 import { DeliveryService } from "./modules/delivery/DeliveryService.js";
 import { enqueueDelivery, listDeliveries, releaseWaitingDeliveries } from "./modules/delivery/deliveryRepository.js";
 
-const app = Fastify({ logger: true });
+// TRUST_PROXY=true cuando la API corre detrás de un balanceador/proxy, para
+// que el límite de intentos use la IP real del cliente.
+const app = Fastify({ logger: true, trustProxy: (process.env.TRUST_PROXY ?? "false").toLowerCase() === "true" });
 await app.register(cors, { origin: true });
+await app.register(rateLimit, { global: false });
+
+const authRateLimit = {
+  rateLimit: {
+    max: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10),
+    timeWindow: "15 minutes",
+    errorResponseBuilder: () => ({ statusCode: 429, message: "Demasiados intentos. Espera unos minutos e inténtalo de nuevo." })
+  }
+};
+const lookupRateLimit = { rateLimit: { max: Number(process.env.LOOKUP_RATE_LIMIT_MAX ?? 60), timeWindow: "1 minute" } };
+const publicRateLimit = { rateLimit: { max: Number(process.env.PUBLIC_RATE_LIMIT_MAX ?? 120), timeWindow: "1 minute" } };
 
 const jwtSecret = process.env.JWT_SECRET ?? (process.env.NODE_ENV === "production" ? "" : "dev-only-change-me-before-production");
 if (!jwtSecret) throw new Error("JWT_SECRET es obligatorio en producción");
@@ -93,7 +114,7 @@ app.get("/v1/system-status", { preHandler: requireAuth }, async (request) => {
   };
 });
 
-app.post("/v1/auth/register", async (request, reply) => {
+app.post("/v1/auth/register", { config: authRateLimit }, async (request, reply) => {
   const parsed = credentialsSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ message: "Revisa el correo y la contraseña." });
   const { email, password } = parsed.data;
@@ -103,7 +124,7 @@ app.post("/v1/auth/register", async (request, reply) => {
   return reply.code(201).send(issueSession({ id: user.id, email: user.email, tenantId: user.tenantId }));
 });
 
-app.post("/v1/auth/login", async (request, reply) => {
+app.post("/v1/auth/login", { config: authRateLimit }, async (request, reply) => {
   const parsed = credentialsSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ message: "Revisa el correo y la contraseña." });
   const user = await findUserByEmail(parsed.data.email);
@@ -119,18 +140,19 @@ app.get("/v1/auth/me", { preHandler: requireAuth }, async (request) => {
 });
 
 // OTP de desarrollo: el código fijo 123456 solo existe fuera de producción.
-// En producción el endpoint queda deshabilitado hasta integrar un proveedor SMS
-// real; nunca se aceptan códigos sin verificar.
+// En producción, hasta integrar un proveedor SMS real, el celular se guarda
+// como dato de contacto SIN verificar (verificationRequired=false) y la
+// verificación queda deshabilitada: nunca se aceptan códigos sin comprobar.
 const otpDevMode = process.env.NODE_ENV !== "production";
 
-app.post("/v1/auth/otp/request", { preHandler: requireAuth }, async (request, reply) => {
+app.post("/v1/auth/otp/request", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
   const parsed = z.object({ phone: z.string().min(9) }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ message: "Número de celular inválido" });
-  if (!otpDevMode) return reply.code(503).send({ message: "La verificación por SMS todavía no está disponible." });
-  return { ok: true, devCode: "123456" };
+  if (!otpDevMode) return { ok: true, verificationRequired: false };
+  return { ok: true, verificationRequired: true, devCode: "123456" };
 });
 
-app.post("/v1/auth/otp/verify", { preHandler: requireAuth }, async (request, reply) => {
+app.post("/v1/auth/otp/verify", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
   const parsed = z.object({ phone: z.string().min(9), code: z.string().length(6) }).safeParse(request.body);
   if (!otpDevMode) return reply.code(503).send({ message: "La verificación por SMS todavía no está disponible." });
   if (!parsed.success || parsed.data.code !== "123456") {
@@ -170,10 +192,18 @@ app.patch("/v1/business", { preHandler: requireAuth }, async (request, reply) =>
     onboardingComplete: z.boolean().optional()
   }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ message: "Revisa los datos del negocio." });
-  return updateBusiness(claims(request).tenantId, parsed.data);
+  try {
+    return await updateBusiness(claims(request).tenantId, parsed.data);
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") {
+      // Un RUC solo puede pertenecer a un negocio en FAKTU.
+      return reply.code(409).send({ code: "RUC_ALREADY_REGISTERED", message: "Este RUC ya está registrado en FAKTU con otra cuenta. Si es tu negocio, escríbenos a soporte." });
+    }
+    throw error;
+  }
 });
 
-app.get("/v1/taxpayers/:ruc", { preHandler: requireAuth }, async (request, reply) => {
+app.get("/v1/taxpayers/:ruc", { preHandler: requireAuth, config: lookupRateLimit }, async (request, reply) => {
   const parsed = z.object({ ruc: z.string().regex(/^\d{11}$/) }).safeParse(request.params);
   if (!parsed.success) return reply.code(400).send({ message: "RUC inválido" });
   try {
@@ -194,7 +224,7 @@ app.get("/v1/taxpayers/:ruc", { preHandler: requireAuth }, async (request, reply
   }
 });
 
-app.post("/v1/customers/lookup", { preHandler: requireAuth }, async (request, reply) => {
+app.post("/v1/customers/lookup", { preHandler: requireAuth, config: lookupRateLimit }, async (request, reply) => {
   const parsed = z.object({ tipoDoc: z.enum(["DNI", "RUC"]), numero: z.string() }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ code: "INVALID_DOCUMENT", message: "Indica un tipo de documento y número válidos.", retryable: false });
   reply.header("Cache-Control", "no-store");
@@ -261,8 +291,25 @@ const receiptSchema = z.object({
     phone: z.string().optional(),
     email: z.string().email().optional()
   }).optional(),
-  items: z.array(z.object({ id: z.string(), name: z.string().min(1), quantity: z.number().positive(), unitPrice: z.number().nonnegative(), unit: z.string().optional() })).min(1)
+  items: z.array(z.object({ id: z.string(), name: z.string().min(1).max(250), quantity: z.number().positive(), unitPrice: z.number().nonnegative(), unit: z.string().optional() })).min(1).max(200),
+  paymentMethod: z.enum(PAYMENT_METHODS).optional(),
+  amountReceived: z.number().nonnegative().optional()
 });
+
+/**
+ * Las facturas requieren la dirección del cliente. Si la app no la envía, se
+ * completa con la dirección fiscal del padrón SUNAT local (sin costo).
+ */
+async function withFacturaAddress<T extends { documentType?: "DNI" | "RUC"; documentNumber?: string; address?: string }>(customer: T | undefined) {
+  if (!customer || customer.documentType !== "RUC" || !customer.documentNumber || customer.address?.trim()) return customer;
+  try {
+    const found = await lookupRucFromSources(customer.documentNumber);
+    if (found.direccion?.trim() && found.direccion.trim() !== "-") return { ...customer, address: found.direccion.trim() };
+  } catch {
+    // Sin dirección: la validación siguiente pedirá ingresarla.
+  }
+  return customer;
+}
 
 function sendReceipt(reply: FastifyReply, receipt: ReceiptRecord, failed = false) {
   const payload = receiptToApi(receipt);
@@ -301,6 +348,15 @@ app.post("/v1/receipts", { preHandler: requireAuth }, async (request, reply) => 
     } catch (error) {
       if (error instanceof DocumentRuleError) return reply.code(422).send({ code: error.code, message: error.message, retryable: false });
       throw error;
+    }
+    if (parsed.data.amountReceived !== undefined && (parsed.data.paymentMethod ?? "EFECTIVO") === "EFECTIVO" && parsed.data.amountReceived + 0.001 < serverTotal) {
+      return reply.code(422).send({ code: "INSUFFICIENT_CASH", message: "El monto recibido es menor al total de la venta.", retryable: false });
+    }
+    if (parsed.data.documentType === "FACTURA") {
+      parsed.data.customer = await withFacturaAddress(parsed.data.customer);
+      if (!parsed.data.customer?.address?.trim()) {
+        return reply.code(422).send({ code: "FACTURA_REQUIRES_ADDRESS", message: "Para emitir una factura indica la dirección del cliente.", retryable: false });
+      }
     }
   }
 
@@ -349,6 +405,60 @@ app.post("/v1/receipts/:id/reconcile", { preHandler: requireAuth }, async (reque
   return sendReceipt(reply, stored);
 });
 
+app.post("/v1/receipts/:id/void", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
+  const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+  const body = z.object({ reason: z.string().trim().min(3).max(250) }).safeParse(request.body ?? {});
+  if (!params.success) return reply.code(400).send({ message: "Comprobante inválido" });
+  if (!body.success) return reply.code(400).send({ code: "REASON_REQUIRED", message: "Indica el motivo de la anulación.", retryable: false });
+  const tenantId = claims(request).tenantId;
+  let prepared;
+  try {
+    prepared = await prepareCreditNote(tenantId, params.data.id, body.data.reason.toUpperCase());
+  } catch (error) {
+    if (error instanceof CreditNoteError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, retryable: false });
+    throw error;
+  }
+  if (isFinalStatus(prepared.receipt.status)) return sendReceipt(reply, prepared.receipt);
+  const outcome = await issueOrReconcileReceipt(billingService, tenantId, prepared.receipt.id);
+  if (outcome.failed) request.log.warn({ receiptId: outcome.receipt.id, message: outcome.receipt.providerMessage }, "credit note issue failed");
+  return sendReceipt(reply, outcome.receipt, outcome.failed);
+});
+
+const isoDate = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
+const isoMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+app.get("/v1/reports/daily-close", { preHandler: requireAuth }, async (request, reply) => {
+  const query = z.object({ date: isoDate.optional() }).safeParse(request.query);
+  if (!query.success) return reply.code(400).send({ message: "Fecha inválida. Usa AAAA-MM-DD." });
+  reply.header("Cache-Control", "no-store");
+  return dailyClose(claims(request).tenantId, query.data.date ?? limaToday());
+});
+
+// Enlace temporal para descargar el registro de ventas sin exponer el JWT en la URL.
+app.post("/v1/reports/sales-register/link", { preHandler: requireAuth }, async (request, reply) => {
+  const body = z.object({ month: isoMonth }).safeParse(request.body ?? {});
+  if (!body.success) return reply.code(400).send({ message: "Mes inválido. Usa AAAA-MM." });
+  const token = createExportToken(claims(request).tenantId, body.data.month);
+  return { url: `${publicBaseUrl()}/exports/sales-register.csv?t=${encodeURIComponent(token)}`, expiresInSeconds: 600 };
+});
+
+app.get("/exports/sales-register.csv", { config: publicRateLimit }, async (request, reply) => {
+  const query = z.object({ t: z.string().min(20) }).safeParse(request.query);
+  if (!query.success) return reply.code(400).type("text/plain").send("Enlace inválido");
+  let data;
+  try {
+    data = verifyExportToken(query.data.t);
+  } catch (error) {
+    return reply.code(400).type("text/plain").send(error instanceof Error ? error.message : "Enlace inválido");
+  }
+  const csv = await salesRegisterCsv(data.tenantId, data.month);
+  return reply
+    .header("Content-Type", "text/csv; charset=utf-8")
+    .header("Content-Disposition", `attachment; filename="registro-ventas-${data.month}.csv"`)
+    .header("Cache-Control", "no-store")
+    .send(csv);
+});
+
 async function shareByReceipt(receiptId: string, tenantId: string, reply: FastifyReply) {
   const [receipt, business] = await Promise.all([getReceiptById(tenantId, receiptId), getBusiness(tenantId)]);
   if (!receipt || !business) return reply.code(404).send({ message: "Comprobante no encontrado" });
@@ -374,7 +484,7 @@ app.post("/v1/receipts/:id/share", { preHandler: requireAuth }, async (request, 
   return shareByReceipt(parsed.data.id, claims(request).tenantId, reply);
 });
 
-app.get("/r", async (request, reply) => {
+app.get("/r", { config: publicRateLimit }, async (request, reply) => {
   const parsed = z.object({ t: z.string().min(20) }).safeParse(request.query);
   if (!parsed.success) return reply.code(400).type("text/plain").send("Enlace inválido");
   try {
@@ -384,19 +494,21 @@ app.get("/r", async (request, reply) => {
     const name = business.tradeName ?? business.businessName ?? "Comprobante electrónico";
     const number = receipt.officialNumber ?? `${receipt.series}-${String(receipt.correlative).padStart(8, "0")}`;
     const items = (receipt.items ?? []).map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${item.quantity}</td><td>S/ ${(item.quantity * item.unitPrice).toFixed(2)}</td></tr>`).join("");
-    return reply.type("text/html; charset=utf-8").send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(number)}</title><style>body{font-family:system-ui,sans-serif;background:#f6f4fb;margin:0;padding:24px;color:#241b3a}.card{max-width:720px;margin:auto;background:#fff;border-radius:18px;padding:24px;box-shadow:0 8px 30px #0001}h1{font-size:22px}table{width:100%;border-collapse:collapse}td{padding:10px 0;border-bottom:1px solid #eee}.total{font-size:22px;font-weight:800;text-align:right}.muted{color:#6f6880}</style></head><body><main class="card"><h1>${escapeHtml(name)}</h1><p class="muted">${escapeHtml(receipt.documentType)} ${escapeHtml(number)}</p><p>Cliente: ${escapeHtml(receipt.customer?.name ?? "Público general")}</p><table>${items}</table><p>Subtotal: S/ ${receipt.subtotal.toFixed(2)}<br>IGV: S/ ${receipt.igv.toFixed(2)}</p><p class="total">Total: S/ ${receipt.total.toFixed(2)}</p>${receipt.providerCode === "mock" ? '<p><strong>ENTORNO DE PRUEBA - SIN VALIDEZ TRIBUTARIA.</strong></p>' : ''}</main></body></html>`);
+    return reply.type("text/html; charset=utf-8").send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(number)}</title><style>body{font-family:system-ui,sans-serif;background:#f6f4fb;margin:0;padding:24px;color:#241b3a}.card{max-width:720px;margin:auto;background:#fff;border-radius:18px;padding:24px;box-shadow:0 8px 30px #0001}h1{font-size:22px}table{width:100%;border-collapse:collapse}td{padding:10px 0;border-bottom:1px solid #eee}.total{font-size:22px;font-weight:800;text-align:right}.muted{color:#6f6880}</style></head><body><main class="card"><h1>${escapeHtml(name)}</h1><p class="muted">${escapeHtml(DOCUMENT_LABEL[receipt.documentType].toUpperCase())} ${escapeHtml(number)}</p>${receipt.creditNote?.status === "ACEPTADO" ? '<p><strong>ANULADO</strong> mediante nota de crédito ' + escapeHtml(receipt.creditNote.officialNumber ?? "") + '</p>' : ''}<p>Cliente: ${escapeHtml(receipt.customer?.name ?? "Público general")}</p><table>${items}</table><p>Subtotal: S/ ${receipt.subtotal.toFixed(2)}<br>IGV: S/ ${receipt.igv.toFixed(2)}</p><p class="total">Total: S/ ${receipt.total.toFixed(2)}</p>${receipt.pdfUrl?.startsWith("https://") ? `<p><a href="${escapeHtml(receipt.pdfUrl)}">Descargar comprobante oficial (PDF)</a></p>` : ''}${receipt.hash ? `<p class="muted">Código hash: ${escapeHtml(receipt.hash)}</p>` : ''}${receipt.providerCode === "mock" ? '<p><strong>ENTORNO DE PRUEBA - SIN VALIDEZ TRIBUTARIA.</strong></p>' : ''}</main></body></html>`);
   } catch (error) {
     return reply.code(400).type("text/plain").send(error instanceof Error ? error.message : "Enlace inválido");
   }
 });
 
-app.get("/r/pdf", async (request, reply) => {
+app.get("/r/pdf", { config: publicRateLimit }, async (request, reply) => {
   const parsed = z.object({ t: z.string().min(20) }).safeParse(request.query);
   if (!parsed.success) return reply.code(400).send("Enlace inválido");
   try {
     const token = verifyReceiptLinkToken(parsed.data.t, "PDF");
     const [receipt, business] = await Promise.all([getReceiptById(token.tenantId, token.receiptId), getBusiness(token.tenantId)]);
     if (!receipt || !business) return reply.code(404).send("Comprobante no encontrado");
+    // Con un proveedor real se entrega la representación impresa oficial.
+    if (receipt.pdfUrl?.startsWith("https://")) return reply.redirect(receipt.pdfUrl);
     const pdf = renderReceiptPdf(receipt, business);
     return reply.header("Content-Type", "application/pdf").header("Content-Disposition", `inline; filename="${receipt.officialNumber ?? "comprobante"}.pdf"`).send(pdf);
   } catch (error) {
@@ -505,6 +617,30 @@ app.post("/v1/pse/authorization-session", { preHandler: requireAuth }, async () 
   authorizationUrl: "https://example.invalid/pse/authorize",
   message: "En producción este endpoint iniciará el flujo seguro del proveedor seleccionado sin almacenar la Clave SOL."
 }));
+
+// App web (PWA): si WEB_DIST_DIR apunta al build de Expo web, la API la sirve
+// en el mismo dominio. Las rutas de la API siempre tienen prioridad.
+const webDist = process.env.WEB_DIST_DIR ? resolve(process.env.WEB_DIST_DIR) : undefined;
+if (webDist && existsSync(resolve(webDist, "index.html"))) {
+  await app.register(fastifyStatic, {
+    root: webDist,
+    wildcard: true,
+    setHeaders: (res, filePath) => {
+      // Archivos con hash: caché larga. HTML y service worker: siempre revalidar.
+      if (filePath.includes("/_expo/static/")) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      else res.setHeader("Cache-Control", "no-cache");
+    }
+  });
+  app.setNotFoundHandler((request, reply) => {
+    const path = request.url.split("?")[0];
+    const isApi = /^\/(v1|r|exports|health)(\/|$)/.test(path);
+    if (request.method === "GET" && !isApi && !/\.[a-z0-9]+$/i.test(path)) {
+      return reply.header("Cache-Control", "no-cache").sendFile("index.html");
+    }
+    return reply.code(404).send({ message: "No encontrado" });
+  });
+  app.log.info({ webDist }, "serving FAKTU web app");
+}
 
 const port = Number(process.env.API_PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });

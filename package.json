@@ -1,7 +1,7 @@
 {
   "name": "faktu",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.14.0",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -19,6 +19,10 @@
     "test:apisperu-sandbox": "npm --workspace @app/api run test:apisperu-sandbox",
     "test:unit": "npm --workspace @app/api run test:unit",
     "test:integration": "npm --workspace @app/api run test:integration",
-    "test": "npm run test:unit && npm run test:apisperu-adapter && npm run test:sunat-ruc-parser"
+    "test": "npm run test:unit && npm run test:nubefact && npm run test:apisperu-adapter && npm run test:sunat-ruc-parser",
+    "test:nubefact": "npm --workspace @app/api run test:nubefact",
+    "build:web": "npm --workspace @app/mobile run build:web",
+    "dev:web": "npm --workspace @app/mobile run web",
+    "ops:activation": "npm --workspace @app/api run ops:activation --"
   }
 }

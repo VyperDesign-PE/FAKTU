@@ -1,6 +1,8 @@
 .git
-node_modules
-apps/mobile/node_modules
-apps/api/node_modules
+**/node_modules
+**/dist-web
+**/.expo
 *.zip
-*.html
+*.log
+.env
+**/.env

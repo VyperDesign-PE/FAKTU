@@ -1,8 +1,10 @@
 import type { BillingIssuer, BillingIssueResult, IssueDocumentCommand } from "./contracts.js";
 import type { BillingProvider } from "./BillingProvider.js";
 import { createBillingProvider } from "./providerFactory.js";
+import { MockBillingProvider } from "./providers/MockBillingProvider.js";
+import { isPracticeSeries } from "./practiceMode.js";
 import { getTenantBillingConfig } from "./tenantBillingConfigRepository.js";
-import { resolveBillingCredential } from "./secretResolver.js";
+import { resolveBillingCredential, resolveBillingEndpoint } from "./secretResolver.js";
 import { getBusiness } from "../tenants/tenantRepository.js";
 import type { TenantBillingConfig } from "./contracts.js";
 
@@ -21,7 +23,9 @@ function flag(name: string) {
  * Barreras para no entregar comprobantes sin validez tributaria a un cliente real.
  */
 export function assertIssuingAllowed(config: TenantBillingConfig) {
-  if (config.providerCode === "mock" && process.env.NODE_ENV === "production" && !flag("ALLOW_MOCK_BILLING")) {
+  // El modo práctica (simulador con series "T", marcado como prueba en la app y
+  // en el comprobante) está permitido salvo que se desactive explícitamente.
+  if (config.providerCode === "mock" && process.env.NODE_ENV === "production" && (process.env.ALLOW_MOCK_BILLING ?? "true").toLowerCase() === "false") {
     throw new BillingConfigError("Este negocio aún no tiene activo un proveedor de facturación electrónica. Contacta a soporte.");
   }
   if (config.environment === "production" && !flag("BILLING_PRODUCTION_ENABLED")) {
@@ -47,11 +51,15 @@ async function runtimeForTenant(tenantId: string) {
         }
       }
     : undefined;
-  return { config, credential, issuer };
+  const endpoint = config.providerCode === "mock" ? undefined : resolveBillingEndpoint(config);
+  return { config, credential, endpoint, issuer };
 }
 
 export class BillingService {
   async issueDocument(command: IssueDocumentCommand): Promise<BillingIssueResult> {
+    // Una venta de práctica jamás llega a un proveedor real, aunque el negocio
+    // se haya activado mientras estaba pendiente.
+    if (isPracticeSeries(command.series)) return new MockBillingProvider().issueDocument(command);
     const runtime = await runtimeForTenant(command.tenantId);
     assertIssuingAllowed(runtime.config);
     const provider = createBillingProvider(runtime.config, runtime);
@@ -59,6 +67,9 @@ export class BillingService {
   }
 
   async reconcileDocument(command: IssueDocumentCommand): Promise<BillingIssueResult> {
+    if (isPracticeSeries(command.series)) {
+      return { providerCode: "mock", status: "PENDING", officialNumber: `${command.series}-${command.correlative}`, message: "Venta de práctica pendiente." };
+    }
     const runtime = await runtimeForTenant(command.tenantId);
     const provider = createBillingProvider(runtime.config, runtime);
     if (!provider.getDocumentStatus) {

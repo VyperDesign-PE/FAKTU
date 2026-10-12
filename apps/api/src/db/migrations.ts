@@ -6,6 +6,7 @@ const BILLING_STATE_MIGRATION_ID = "20260827_003_billing_connection_state";
 const DELIVERY_MIGRATION_ID = "20260827_004_receipt_delivery_queue";
 const SUNAT_RUC_REGISTRY_MIGRATION_ID = "20260828_005_sunat_ruc_registry";
 const APISPERU_SANDBOX_MIGRATION_ID = "20260828_006_apisperu_sandbox";
+const PILOT_FEATURES_MIGRATION_ID = "20261012_007_payments_credit_notes";
 
 /**
  * Migración idempotente del MVP 1.0.
@@ -417,4 +418,61 @@ export async function runMigrations() {
     });
   }
 
+
+  const pilotFeaturesApplied = await sql`
+    select id from schema_migrations where id = ${PILOT_FEATURES_MIGRATION_ID} limit 1
+  `;
+  if (!pilotFeaturesApplied.length) {
+    await sql.begin(async (tx) => {
+      // Notas de crédito como un tipo más de comprobante (reutiliza correlativos,
+      // idempotencia, conciliación y compartir).
+      await tx`alter table receipts drop constraint if exists receipts_document_type_check`;
+      await tx`
+        alter table receipts add constraint receipts_document_type_check
+        check (document_type in ('BOLETA', 'FACTURA', 'NOTA_CREDITO'))
+      `;
+      await tx`alter table receipts alter column document_type type varchar(12)`;
+      await tx`alter table document_series drop constraint if exists document_series_document_type_check`;
+      await tx`alter table document_series alter column document_type type varchar(12)`;
+      await tx`
+        alter table document_series add constraint document_series_document_type_check
+        check (document_type in ('BOLETA', 'FACTURA', 'NOTA_CREDITO'))
+      `;
+      await tx`alter table receipts add column if not exists related_receipt_id uuid references receipts(id) on delete restrict`;
+      await tx`alter table receipts add column if not exists credit_note_reason text`;
+      // Una sola nota de crédito vigente por comprobante (una rechazada por
+      // SUNAT no impide volver a intentar la anulación).
+      await tx`
+        create unique index if not exists uq_receipts_credit_note_per_receipt
+        on receipts (related_receipt_id)
+        where document_type = 'NOTA_CREDITO' and sunat_status <> 'RECHAZADO'
+      `;
+
+      // Medios de pago (Yape/Plin dominan en pequeños comercios) y vuelto.
+      await tx`alter table receipts add column if not exists payment_method varchar(20) not null default 'EFECTIVO'`;
+      await tx`alter table receipts drop constraint if exists receipts_payment_method_check`;
+      await tx`
+        alter table receipts add constraint receipts_payment_method_check
+        check (payment_method in ('EFECTIVO', 'YAPE', 'PLIN', 'TARJETA', 'TRANSFERENCIA'))
+      `;
+      await tx`alter table receipts add column if not exists amount_received numeric(14,2)`;
+      await tx`alter table receipts add column if not exists change_amount numeric(14,2)`;
+
+      // Datos para la representación impresa oficial.
+      await tx`alter table receipts add column if not exists provider_qr_data text`;
+      await tx`alter table receipts add column if not exists provider_hash text`;
+
+      await tx`
+        create index if not exists idx_receipts_pending_worker
+        on receipts (last_attempt_at)
+        where sunat_status in ('PENDIENTE', 'ENVIANDO', 'ERROR', 'OBSERVADO')
+      `;
+
+      await tx`
+        insert into schema_migrations (id)
+        values (${PILOT_FEATURES_MIGRATION_ID})
+        on conflict do nothing
+      `;
+    });
+  }
 }

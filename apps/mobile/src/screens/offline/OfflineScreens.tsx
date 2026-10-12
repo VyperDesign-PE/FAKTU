@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
 import { Card, InfoRow, PrimaryButton } from "../../components/Ui";
 import { useApp } from "../../context/AppContext";
 import { theme } from "../../theme";
+import { showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
@@ -32,7 +33,7 @@ export function TemporaryReceiptScreen({ navigation }: P<"TemporaryReceipt">) {
     <View style={styles.center}><Text style={styles.ok}>✓</Text></View>
     <Card tone="warning"><Text style={styles.tempLabel}>CONSTANCIA TEMPORAL</Text><Text style={styles.tempNumber}>{lastReceipt?.temporaryNumber ?? "VT-000000"}</Text><Text style={styles.body}>Tu comprobante electrónico será enviado cuando vuelva la conexión.</Text></Card>
     <Card><InfoRow label="Fecha y hora" value={lastReceipt ? new Date(lastReceipt.createdAt).toLocaleString() : "-"} /><InfoRow label="Cliente" value={lastReceipt?.customer?.name ?? "Público general"} /><InfoRow label="Total" value={`S/ ${(lastReceipt?.total ?? 0).toFixed(2)}`} /></Card>
-    <PrimaryButton label="COMPARTIR CONSTANCIA" onPress={() => Alert.alert("Constancia preparada", "En la siguiente integración podremos compartirla por Bluetooth, impresión local o cuando haya conexión.")} tone="outline" />
+    <PrimaryButton label="COMPARTIR CONSTANCIA" onPress={() => showAlert("Constancia preparada", "En la siguiente integración podremos compartirla por Bluetooth, impresión local o cuando haya conexión.")} tone="outline" />
     <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "OfflineSale" }] })} />
     <PrimaryButton label="VER PENDIENTES" onPress={() => navigation.navigate("PendingReceipts")} tone="outline" />
   </Screen>;
@@ -53,7 +54,7 @@ export function SyncingScreen({ navigation }: P<"Syncing">) {
   const { online, syncNow } = useApp();
   const [message, setMessage] = useState("Preparando comprobantes...");
   useEffect(() => {
-    if (!online) { Alert.alert("Sin Internet", "La sincronización empezará automáticamente cuando vuelva la conexión."); navigation.replace("PendingReceipts"); return; }
+    if (!online) { showAlert("Sin Internet", "La sincronización empezará automáticamente cuando vuelva la conexión."); navigation.replace("PendingReceipts"); return; }
     let alive = true;
     setMessage("Enviando comprobantes pendientes...");
     syncNow().then((result) => { if (alive) navigation.replace("SyncResult", result); });

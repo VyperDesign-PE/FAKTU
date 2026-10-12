@@ -96,11 +96,16 @@ function companyPayload(issuer: BillingIssuer) {
   };
 }
 
+const SUNAT_DOC_TYPE = { FACTURA: "01", BOLETA: "03", NOTA_CREDITO: "07" } as const;
+
 export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: BillingIssuer) {
   if (!/^\d{11}$/.test(issuer.ruc)) throw new Error("El negocio debe tener un RUC valido antes de emitir.");
   if (!issuer.legalName?.trim()) throw new Error("El negocio debe tener razon social antes de emitir.");
   if (command.documentType === "FACTURA" && command.customer?.documentType !== "RUC") {
     throw new Error("Para emitir una factura el cliente debe tener RUC.");
+  }
+  if (command.documentType === "NOTA_CREDITO" && (!command.relatedDocument || !command.creditNoteReason)) {
+    throw new Error("La nota de crédito debe indicar el comprobante que modifica y el motivo.");
   }
 
   // Detalle y cabecera salen del mismo cálculo, así la suma de líneas cuadra
@@ -131,11 +136,18 @@ export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: Billi
   return {
     ublVersion: "2.1",
     tipoOperacion: "0101",
-    tipoDoc: command.documentType === "FACTURA" ? "01" : "03",
+    tipoDoc: SUNAT_DOC_TYPE[command.documentType],
     serie: command.series,
     correlativo: String(command.correlative),
     fechaEmision: formatLimaIso(command.issueDate),
-    formaPago: { moneda: command.currency, tipo: "Contado" },
+    ...(command.documentType === "NOTA_CREDITO"
+      ? {
+          tipDocAfectado: SUNAT_DOC_TYPE[command.relatedDocument!.documentType],
+          numDocfectado: `${command.relatedDocument!.series}-${command.relatedDocument!.correlative}`,
+          codMotivo: command.creditNoteReason!.code,
+          desMotivo: command.creditNoteReason!.description
+        }
+      : { formaPago: { moneda: command.currency, tipo: "Contado" } }),
     tipoMoneda: command.currency,
     client: customerPayload(command),
     company: companyPayload(issuer),
@@ -204,7 +216,9 @@ export class ApiPeruBillingProvider implements BillingProvider {
     const body = mapCommandToApiPeru(command, this.options.issuer);
     let response: Response;
     try {
-      response = await this.request(new URL("invoice/send", this.baseUrl), {
+      // Notas de crédito: endpoint note/send (modelo Greenter). Validar en sandbox.
+      const path = command.documentType === "NOTA_CREDITO" ? "note/send" : "invoice/send";
+      response = await this.request(new URL(path, this.baseUrl), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -274,7 +288,7 @@ export class ApiPeruBillingProvider implements BillingProvider {
 
   async getDocumentStatus(command: IssueDocumentCommand): Promise<BillingIssueResult> {
     const url = new URL("invoice/status", this.baseUrl);
-    url.searchParams.set("tipo", command.documentType === "FACTURA" ? "01" : "03");
+    url.searchParams.set("tipo", SUNAT_DOC_TYPE[command.documentType]);
     url.searchParams.set("serie", command.series);
     url.searchParams.set("numero", String(command.correlative));
     url.searchParams.set("ruc", this.options.issuer.ruc);

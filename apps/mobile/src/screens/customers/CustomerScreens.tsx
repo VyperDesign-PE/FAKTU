@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
@@ -14,6 +14,7 @@ import {
 } from "../../services/api";
 import { listCachedCustomers, saveCachedCustomer } from "../../storage/customerCache";
 import { theme } from "../../theme";
+import { showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
@@ -175,18 +176,18 @@ export function CustomerFormScreen({ navigation, route }: P<"CustomerForm">) {
           phone: phone.trim() || undefined,
           email: email.trim() || undefined
         });
-        Alert.alert("Cliente guardado", "Los datos quedaron guardados en el negocio.", [
+        showAlert("Cliente guardado", "Los datos quedaron guardados en el negocio.", [
           { text: "OK", onPress: () => navigation.goBack() }
         ]);
       } else {
-        Alert.alert(
+        showAlert(
           "Cliente guardado en el dispositivo",
           "Cuando vuelva Internet lo sincronizaremos automáticamente con tu negocio.",
           [{ text: "OK", onPress: () => navigation.goBack() }]
         );
       }
     } catch (error) {
-      Alert.alert("No pudimos guardar", error instanceof Error ? error.message : "Intenta nuevamente.");
+      showAlert("No pudimos guardar", error instanceof Error ? error.message : "Intenta nuevamente.");
     } finally {
       setSaving(false);
     }

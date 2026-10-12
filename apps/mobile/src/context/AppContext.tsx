@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import NetInfo from "@react-native-community/netinfo";
-import type { BusinessProfile, Customer, DocumentType, PendingReceipt, Product, SaleDraft } from "../domain/types";
+import type { BusinessProfile, Customer, DocumentType, PaymentMethod, PendingReceipt, Product, SaleDraft } from "../domain/types";
 import { enqueueReceipt, getQueue } from "../storage/receiptQueue";
 import { syncPendingReceipts } from "../services/sync";
 import { loadProfile, saveProfile } from "../storage/profile";
@@ -18,7 +18,7 @@ import {
   saveRemoteCustomer
 } from "../services/api";
 
-const initialDraft: SaleDraft = { items: [], documentType: "BOLETA" };
+const initialDraft: SaleDraft = { items: [], documentType: "BOLETA", paymentMethod: "EFECTIVO" };
 
 type AppContextValue = {
   hydrated: boolean;
@@ -30,7 +30,7 @@ type AppContextValue = {
   catalog: Product[];
   draft: SaleDraft;
   lastReceipt?: PendingReceipt;
-  setProfilePatch: (patch: Partial<BusinessProfile>) => Promise<void>;
+  setProfilePatch: (patch: Partial<BusinessProfile>, options?: { strict?: boolean }) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   addProductToCatalog: (product: Product) => Promise<void>;
   addItem: (product: Product) => void;
@@ -38,6 +38,7 @@ type AppContextValue = {
   removeItem: (id: string) => void;
   setDocumentType: (type: DocumentType) => void;
   setCustomer: (customer?: Customer) => void;
+  setPayment: (paymentMethod: PaymentMethod, amountReceived?: number) => void;
   resetDraft: () => void;
   createReceipt: () => Promise<PendingReceipt>;
   refreshQueue: () => Promise<void>;
@@ -163,11 +164,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [authHydrated, scope, syncCachedCustomers, syncNow, user]);
 
-  async function setProfilePatch(patch: Partial<BusinessProfile>) {
+  /**
+   * Guarda datos del negocio. Con `strict`, un rechazo del servidor (por
+   * ejemplo, RUC ya registrado) se propaga y no se guarda localmente.
+   */
+  async function setProfilePatch(patch: Partial<BusinessProfile>, options: { strict?: boolean } = {}) {
     const next = { ...profile, ...patch };
+    if (options.strict && online && user) await updateRemoteBusiness(next);
     setProfile(next);
     await saveProfile(scope, next);
-    if (online && user) {
+    if (!options.strict && online && user) {
       await updateRemoteBusiness(next).catch(() => undefined);
     }
   }
@@ -215,6 +221,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDraft((current) => ({ ...current, customer }));
   }
 
+  function setPayment(paymentMethod: PaymentMethod, amountReceived?: number) {
+    setDraft((current) => ({ ...current, paymentMethod, amountReceived: paymentMethod === "EFECTIVO" ? amountReceived : undefined }));
+  }
+
   function resetDraft() {
     setDraft(initialDraft);
     setLastReceipt(undefined);
@@ -233,6 +243,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       items: draft.items,
       customer: draft.customer,
       total,
+      paymentMethod: draft.paymentMethod,
+      amountReceived: draft.paymentMethod === "EFECTIVO" ? draft.amountReceived : undefined,
       status: "PENDING"
     };
     await enqueueReceipt(scope, receipt);
@@ -247,7 +259,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppContextValue>(() => ({
     hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt,
     setProfilePatch, completeOnboarding, addProductToCatalog, addItem, setItemQuantity,
-    removeItem, setDocumentType, setCustomer, resetDraft, createReceipt, refreshQueue, refreshHistory, syncNow
+    removeItem, setDocumentType, setCustomer, setPayment, resetDraft, createReceipt, refreshQueue, refreshHistory, syncNow
   }), [hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt, refreshQueue, refreshHistory, syncNow]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

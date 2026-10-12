@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
@@ -7,13 +7,14 @@ import { Card, PrimaryButton, TextField } from "../../components/Ui";
 import { useAuth } from "../../context/AuthContext";
 import { hasErrors, normalizeEmail, validateLogin, validateRegistration } from "../../auth/validation";
 import { theme } from "../../theme";
+import { showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
 function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <View style={styles.header}>
-      <View style={styles.logo}><Text style={styles.logoText}>CF</Text></View>
+      <View style={styles.logo}><Text style={styles.logoText}>F</Text></View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
     </View>
@@ -37,7 +38,7 @@ export function LoginScreen({ navigation }: P<"Login">) {
       await signIn(normalizeEmail(email), password);
       navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] });
     } catch (error) {
-      Alert.alert("No pudimos ingresar", error instanceof Error ? error.message : "Verifica tus datos e inténtalo nuevamente.");
+      showAlert("No pudimos ingresar", error instanceof Error ? error.message : "Verifica tus datos e inténtalo nuevamente.");
     } finally {
       setBusy(false);
     }
@@ -105,7 +106,7 @@ export function RegisterScreen({ navigation }: P<"Register">) {
       await signUp(normalizeEmail(email), password);
       navigation.reset({ index: 0, routes: [{ name: "VerifyPhone" }] });
     } catch (error) {
-      Alert.alert("No pudimos crear la cuenta", error instanceof Error ? error.message : "Inténtalo nuevamente.");
+      showAlert("No pudimos crear la cuenta", error instanceof Error ? error.message : "Inténtalo nuevamente.");
     } finally {
       setBusy(false);
     }

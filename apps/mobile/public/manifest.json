@@ -1,0 +1,17 @@
+{
+  "name": "FAKTU — Facturación electrónica",
+  "short_name": "FAKTU",
+  "description": "Boletas y facturas electrónicas para tu negocio, desde el celular o la computadora.",
+  "lang": "es-PE",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F8FC",
+  "theme_color": "#5B2FD5",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

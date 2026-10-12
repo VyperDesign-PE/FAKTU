@@ -1,30 +1,30 @@
 # FAKTU
 
-Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App móvil (React Native + Expo), API (Fastify + PostgreSQL) y adaptador de facturación desacoplado (APIsPERU en sandbox).
+Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App web/móvil (React Native + Expo, PWA), API (Fastify + PostgreSQL) y facturación electrónica con Nubefact (OSE/PSE) mediante un adaptador desacoplado.
 
-## Versión actual: 0.13.0 — estabilización previa al piloto
+## Versión actual: 0.14.0 — lista para el piloto
 
-Corrige los problemas críticos detectados en la revisión de la 0.12.2 (ver `CHANGELOG.md`):
+- **Proveedor:** Nubefact (OSE/PSE), con adaptador nativo. APIsPERU queda como alternativa.
+- **Plataforma:** app web instalable (PWA), servida por la misma API. La app Android sale del mismo código cuando el piloto lo valide.
+- **Funciones:** venta con Yape, Plin, efectivo (con vuelto), tarjeta o transferencia; anulación con nota de crédito; cierre de caja; registro de ventas para el contador; modo práctica aislado.
+- **Operación del piloto:** ver **`docs/PILOTO.md`** (decisiones, activación de negocios, homologación, despliegue y riesgos).
 
-- El servidor recalcula montos e IGV a partir de los ítems; ya no confía en el total del celular.
-- Reglas tributarias validadas **antes** de reservar correlativo (factura con RUC, boleta > S/ 700 identificada, formato DNI/RUC).
-- Emisión segura ante reintentos: concilia antes de reenviar, nunca envía dos veces en paralelo y un estado final no se degrada.
-- Proceso del servidor que concilia/reintenta comprobantes pendientes sin depender del celular.
-- Credenciales de facturación aisladas por negocio; producción y simulador bloqueados hasta habilitarlos.
-- La app móvil distingue comprobantes rechazados (antes podía mostrarlos como aceptados).
-- OTP de desarrollo deshabilitado en producción.
+Historial de cambios en `CHANGELOG.md`.
 
 ## Inicio rápido
 
 ```bash
 npm ci                      # dependencias fijadas en package-lock.json
 npm run typecheck           # API + app móvil
-npm test                    # pruebas unitarias y de adaptadores (sin base de datos)
+npm test                    # pruebas unitarias y de adaptadores Nubefact/APIsPERU (sin base de datos)
+EXPO_PUBLIC_API_URL=http://localhost:4000 npm run dev:web   # app web en desarrollo (con npm run dev:api)
+npm run build:web           # build de la PWA (apps/mobile/dist-web)
 
 # Con PostgreSQL de PRUEBAS:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/faktu_test ALLOW_DB_TESTS=true npm run test:integration
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/faktu_e2e scripts/run-e2e-local.sh   # E2E sin Docker
 npm run e2e:up              # E2E con Docker
+docker build -f infra/Dockerfile -t faktu .   # imagen de producción (API + web)
 ```
 
 Todo esto corre automáticamente en GitHub Actions (`.github/workflows/ci.yml`) en cada push y pull request.

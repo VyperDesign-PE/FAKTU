@@ -1,3 +1,34 @@
+# 0.14.0 - Listo para el piloto: Nubefact, web y funciones de caja
+
+**Facturación**
+- Adaptador nativo **Nubefact** (OSE/PSE), según el manual JSON oficial: emisión, consulta, notas de crédito; código 23 (ya existe) y 24 (no existe) manejados como conciliación, nunca como rechazo. Ruta y token por negocio (`BILLING_URL_<tenant>` / `BILLING_TOKEN_<tenant>`), definidos por operaciones.
+- **Modo práctica**: negocios sin facturación activa usan series `TB01/TF01/TC01`; no consumen correlativos reales, nunca llegan a un proveedor real y no salen en el registro del contador.
+- Al compartir se usa el **PDF oficial** del proveedor (QR + hash).
+- Facturas: la dirección del cliente se completa desde el padrón SUNAT; si no existe, se pide (Nubefact la exige).
+
+**Funciones nuevas**
+- Medio de pago (efectivo, Yape, Plin, tarjeta, transferencia) y vuelto.
+- **Anular venta** con nota de crédito (motivo 01), idempotente y solo para el titular.
+- **Cierre de caja** diario (neto, efectivo esperado, desglose por medio de pago) y métricas reales en el panel.
+- **Registro de ventas mensual en CSV** para el contador (enlace firmado de 10 minutos).
+
+**App web (PWA)**
+- La app Expo compila para web, instalable (manifest, íconos, service worker sin caché de API) y servida por la API en el mismo dominio.
+- Sesión en `localStorage` en web; alertas y "compartir" funcionan en el navegador.
+- Imagen Docker de producción `infra/Dockerfile` (API + web, usuario sin privilegios, healthcheck).
+
+**Producto y seguridad**
+- La configuración inicial ya **no pide la Clave SOL** ni simula una autorización: explica la activación real y muestra el estado verdadero de la facturación.
+- Límite de intentos en login, registro, OTP, consultas de documentos y enlaces públicos (`@fastify/rate-limit`).
+- RUC ya registrado por otra cuenta: mensaje claro (409) en vez de error 500.
+- Sin proveedor de SMS en producción, el celular se guarda sin verificar en lugar de bloquear el alta.
+- Historial real en la pestaña Historial; se quitan las tarjetas de maqueta.
+- `tsx` pasa a dependencia de ejecución (la imagen de producción lo necesita).
+
+**Pruebas**
+- 14 pruebas del adaptador Nubefact; simulador de Nubefact por HTTP en el E2E (6 documentos emitidos exactamente una vez); E2E de pagos, anulación, cierre, CSV, modo práctica y límite de intentos; CI compila la web.
+- Guía de operación del piloto: `docs/PILOTO.md`; activación por negocio: `npm run ops:activation -- correo`.
+
 # 0.13.0 - FAKTU: estabilización previa al piloto
 
 Correcciones de la revisión técnica de la 0.12.2.

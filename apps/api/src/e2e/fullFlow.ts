@@ -51,7 +51,7 @@ async function seedRucFixture() {
   await upsertSunatRucRows({
     runId,
     sourceUpdatedAt: "2026-08-28",
-    rows: [{ ruc: E2E_RUC, legalName: E2E_RUC_NAME }]
+    rows: [{ ruc: E2E_RUC, legalName: E2E_RUC_NAME, fiscalAddress: "AV. E2E 123 LIMA" }]
   });
   await completeSunatRucImport({ runId, rowCount: 1, pruneMissing: false });
 }
@@ -90,6 +90,16 @@ async function main() {
     tokenA
   );
   assert.equal(business.businessName, "BODEGA E2E");
+
+  log("Activating Nubefact (sandbox) for tenant A");
+  const nubefactSettings = await request<{ providerCode: string; credentialConfigured: boolean }>("/v1/billing/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ providerCode: "nubefact", environment: "sandbox" })
+  }, tokenA);
+  assert.equal(nubefactSettings.providerCode, "nubefact");
+  assert.equal(nubefactSettings.credentialConfigured, true);
+  const connection = await request<{ ok: boolean }>("/v1/billing/test-connection", { method: "POST" }, tokenA);
+  assert.equal(connection.ok, true, "Nubefact connection test must pass");
 
   log("Validating RUC lookup from local SUNAT registry");
   const taxpayer = await request<{ ruc: string; businessName: string; source: string }>(`/v1/taxpayers/${E2E_RUC}`, {}, tokenA);
@@ -218,12 +228,12 @@ async function main() {
   assert.equal(share.documentNumber, "B001-00000002");
   const viewResponse = await fetch(share.viewUrl);
   assert.equal(viewResponse.status, 200);
-  assert.match(await viewResponse.text(), /B001-00000002/);
-  const pdfResponse = await fetch(share.pdfUrl);
-  assert.equal(pdfResponse.status, 200);
-  assert.match(pdfResponse.headers.get("content-type") ?? "", /application\/pdf/);
-  const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
-  assert.equal(Buffer.from(pdfBytes.slice(0, 4)).toString("ascii"), "%PDF");
+  const viewHtml = await viewResponse.text();
+  assert.match(viewHtml, /B001-00000002/);
+  assert.match(viewHtml, /comprobante oficial/, "The public view must link the official PDF");
+  assert.match(viewHtml, /Código hash/);
+  // Con proveedor real se comparte la representación impresa oficial (QR + hash).
+  assert.match(share.pdfUrl, /^https:\/\/www\.nubefact\.com\/cpe\/.+\.pdf$/);
 
   log("Testing queued automatic delivery in mock mode");
   const delivery = await request<{ status: string }>(
@@ -280,6 +290,10 @@ async function main() {
   }, tokenA);
   assert.equal(factura.status, "ACCEPTED");
   assert.equal(factura.officialNumber, "F001-00000001", "The rejected factura must not consume a correlative");
+  const facturaDetail = await request<{ customer?: { address?: string } }>(
+    `/v1/receipts/by-transaction/${encodeURIComponent(`e2e-factura-ok-${suffix}`)}`, {}, tokenA
+  );
+  assert.equal(facturaDetail.customer?.address, "AV. E2E 123 LIMA", "Factura address must be filled from the SUNAT registry");
 
   log("Rejecting a boleta over S/ 700 without customer");
   const boletaGrande = await rawRequest("/v1/receipts", {
@@ -310,7 +324,136 @@ async function main() {
   assert.equal(settings.credentialSecretRef, undefined, "The secret reference must not be exposed");
   assert.equal(settings.environment, "sandbox");
 
-  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security");
+  log("Recording payment method and cash change");
+  const yapeSale = await request<{ status: string; paymentMethod: string }>("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-yape-${suffix}`,
+      temporaryNumber: "VT-E2E-YAPE",
+      documentType: "BOLETA",
+      total: 23.6,
+      paymentMethod: "YAPE",
+      items: [{ id: "e2e-product-1", name: "GASEOSA E2E", quantity: 2, unitPrice: 11.8 }]
+    })
+  }, tokenA);
+  assert.equal(yapeSale.status, "ACCEPTED");
+  assert.equal(yapeSale.paymentMethod, "YAPE");
+  const cashSale = await request<{ id: string; status: string; officialNumber: string; changeAmount: number }>("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-cash-${suffix}`,
+      temporaryNumber: "VT-E2E-CASH",
+      documentType: "BOLETA",
+      total: 11.8,
+      paymentMethod: "EFECTIVO",
+      amountReceived: 20,
+      items: [{ id: "e2e-product-1", name: "GASEOSA E2E", quantity: 1, unitPrice: 11.8 }]
+    })
+  }, tokenA);
+  assert.equal(cashSale.changeAmount, 8.2);
+  const shortCash = await rawRequest("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-short-cash-${suffix}`,
+      temporaryNumber: "VT-E2E-SHORT",
+      documentType: "BOLETA",
+      total: 11.8,
+      amountReceived: 10,
+      items: [{ id: "e2e-product-1", name: "GASEOSA E2E", quantity: 1, unitPrice: 11.8 }]
+    })
+  }, tokenA);
+  assert.equal(shortCash.body.code, "INSUFFICIENT_CASH");
+
+  log("Voiding a sale with a credit note (idempotent)");
+  const creditNote = await request<{ status: string; documentType: string; officialNumber: string; relatedReceiptId: string }>(
+    `/v1/receipts/${cashSale.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Cliente devolvió el producto" }) }, tokenA
+  );
+  assert.equal(creditNote.status, "ACCEPTED");
+  assert.equal(creditNote.documentType, "NOTA_CREDITO");
+  assert.equal(creditNote.officialNumber, "BC01-00000001");
+  assert.equal(creditNote.relatedReceiptId, cashSale.id);
+  const creditNoteRetry = await request<{ officialNumber: string }>(
+    `/v1/receipts/${cashSale.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Cliente devolvió el producto" }) }, tokenA
+  );
+  assert.equal(creditNoteRetry.officialNumber, "BC01-00000001", "Voiding twice must not create a second credit note");
+  const voided = await request<{ voided: boolean; creditNote?: { officialNumber?: string } }>(`/v1/receipts/${cashSale.id}`, {}, tokenA);
+  assert.equal(voided.voided, true);
+  const voidByOtherTenant = await rawRequest(`/v1/receipts/${cashSale.id}/void`, { method: "POST", body: JSON.stringify({ reason: "intento ajeno" }) }, tokenB);
+  assert.equal(voidByOtherTenant.status, 404, "A tenant must not void another tenant's receipt");
+
+  log("Daily cash close and sales register for the accountant");
+  const close = await request<{
+    sales: { count: number; total: number };
+    creditNotes: { total: number };
+    netTotal: number;
+    expectedCash: number;
+    paymentMethods: Array<{ method: string; sales: number; refunds: number; net: number }>;
+  }>("/v1/reports/daily-close", {}, tokenA);
+  const yape = close.paymentMethods.find((row) => row.method === "YAPE");
+  assert.equal(yape?.sales, 23.6);
+  assert.equal(close.creditNotes.total, 11.8);
+  assert.equal(Math.round((close.sales.total - close.creditNotes.total) * 100), Math.round(close.netTotal * 100));
+  const efectivo = close.paymentMethods.find((row) => row.method === "EFECTIVO");
+  assert.equal(efectivo?.refunds, 11.8);
+  assert.equal(close.expectedCash, efectivo?.net);
+
+  const month = new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 7);
+  const link = await request<{ url: string }>("/v1/reports/sales-register/link", { method: "POST", body: JSON.stringify({ month }) }, tokenA);
+  const csvResponse = await fetch(link.url.replace(/^https?:\/\/[^/]+/, apiBase));
+  assert.equal(csvResponse.status, 200);
+  const csv = await csvResponse.text();
+  assert.match(csv, /BC01,1,/);
+  assert.match(csv, /-11\.80/);
+  assert.ok(!csv.includes("BODEGA-B"), "Export must only include the tenant's own receipts");
+  const tamperedLink = await fetch(`${apiBase}/exports/sales-register.csv?t=${encodeURIComponent(link.url.split("t=")[1].slice(0, -2) + "xx")}`);
+  assert.equal(tamperedLink.status, 400);
+
+  log("Rate limiting repeated failed logins");
+  let limited = false;
+  for (let attempt = 0; attempt < 15 && !limited; attempt += 1) {
+    const response = await fetch(`${apiBase}/v1/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: `owner-a-${suffix}@example.test`, password: "wrong-password" })
+    });
+    limited = response.status === 429;
+  }
+  assert.ok(limited, "Login must be rate limited after repeated failures");
+
+  log("Checking Nubefact received every real document exactly once");
+  const nubefactStats = await (await fetch(`${mockDocumentsBase}/stats`)).json() as { nubefactIssued: number };
+  // B001 x5 (online, offline, yape, cash, + factura F001) + nota de crédito BC01 = 6 emisiones
+  assert.equal(nubefactStats.nubefactIssued, 6, "Each real document must reach Nubefact exactly once");
+
+  log("Practice mode: tenant without electronic billing uses isolated series");
+  const practice = await request<{ status: string; officialNumber: string; providerCode: string }>("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-practice-${suffix}`,
+      temporaryNumber: "VT-E2E-PRACTICE",
+      documentType: "BOLETA",
+      total: 5,
+      items: [{ id: "x", name: "PRACTICA", quantity: 1, unitPrice: 5 }]
+    })
+  }, tokenB);
+  assert.equal(practice.status, "ACCEPTED");
+  assert.equal(practice.providerCode, "mock");
+  assert.equal(practice.officialNumber, "TB01-00000001", "Practice sales must not consume real correlatives");
+  const practiceLink = await request<{ url: string }>("/v1/reports/sales-register/link", { method: "POST", body: JSON.stringify({ month }) }, tokenB);
+  const practiceCsv = await (await fetch(practiceLink.url.replace(/^https?:\/\/[^/]+/, apiBase))).text();
+  assert.ok(!practiceCsv.includes("TB01"), "Practice sales must not reach the accountant's register");
+  const practiceShare = await request<{ pdfUrl: string; viewUrl: string }>(
+    `/v1/receipts/by-transaction/${encodeURIComponent(`e2e-practice-${suffix}`)}/share`, { method: "POST" }, tokenB
+  );
+  const practicePdf = await fetch(practiceShare.pdfUrl);
+  assert.equal(practicePdf.status, 200);
+  assert.match(practicePdf.headers.get("content-type") ?? "", /application\/pdf/);
+  const pdfBytes = new Uint8Array(await practicePdf.arrayBuffer());
+  assert.equal(Buffer.from(pdfBytes.slice(0, 4)).toString("ascii"), "%PDF");
+  assert.match(Buffer.from(pdfBytes).toString("latin1"), /ENTORNO DE PRUEBA/, "Practice PDF must say it has no tax validity");
+  assert.match(await (await fetch(practiceShare.viewUrl)).text(), /SIN VALIDEZ TRIBUTARIA/);
+
+  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact -> practice mode -> rate limit");
 }
 
 main()

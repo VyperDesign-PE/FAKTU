@@ -27,6 +27,7 @@ MOCK_PID=$!
   DOCUMENT_LOOKUP_TIMEOUT_MS=3000 DOCUMENT_LOOKUP_DNI_COST_PEN=0.03 \
   PUBLIC_APP_BASE_URL="http://127.0.0.1:$API_PORT" PUBLIC_RECEIPT_LINK_SECRET=e2e-public-link-secret \
   DELIVERY_PROVIDER=mock RECEIPT_WORKER_ENABLED=false \
+  BILLING_ALLOW_SHARED_SANDBOX_TOKEN=true NUBEFACT_API_URL="http://127.0.0.1:$MOCK_PORT/nubefact" NUBEFACT_API_TOKEN=e2e-nubefact-token \
   exec ../../node_modules/.bin/tsx src/server.ts
 ) > "$LOG_DIR/api.log" 2>&1 &
 API_PID=$!

@@ -4,10 +4,13 @@ import { MockBillingProvider } from "./providers/MockBillingProvider.js";
 import { ExternalRestBillingProvider } from "./providers/ExternalRestBillingProvider.js";
 import { ConfiguredProviderProbe } from "./providers/ConfiguredProviderProbe.js";
 import { ApiPeruBillingProvider } from "./providers/ApiPeruBillingProvider.js";
+import { NubefactBillingProvider } from "./providers/NubefactBillingProvider.js";
 import { BillingCredentialError } from "./secretResolver.js";
 
 export type BillingProviderRuntime = {
   credential?: string;
+  /** Ruta de la cuenta para proveedores con URL por empresa (Nubefact). */
+  endpoint?: string;
   issuer?: BillingIssuer;
 };
 
@@ -29,6 +32,17 @@ export function createBillingProvider(config: TenantBillingConfig, runtime: Bill
       issuer: runtime.issuer,
       baseUrl: baseUrl ?? "https://facturacion.apisperu.com/api/v1/",
       timeoutMs: Number(process.env.APISPERU_TIMEOUT_MS ?? 15000)
+    });
+  }
+
+  if (config.providerCode === "nubefact") {
+    if (!token || !runtime.endpoint) {
+      throw new BillingCredentialError("Este negocio todavía no tiene su cuenta de Nubefact configurada. Contacta a soporte.");
+    }
+    return new NubefactBillingProvider({
+      url: runtime.endpoint,
+      token,
+      timeoutMs: Number(process.env.NUBEFACT_TIMEOUT_MS ?? 20000)
     });
   }
 

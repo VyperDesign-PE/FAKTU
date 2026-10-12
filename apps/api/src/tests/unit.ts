@@ -5,6 +5,7 @@ import { isAllowedSecretRef, resolveBillingCredential, tenantSecretEnvName } fro
 import { assertIssuingAllowed, BillingConfigError } from "../modules/billing/BillingService.js";
 import { isAlreadyRegisteredResponse, mapCommandToApiPeru } from "../modules/billing/providers/ApiPeruBillingProvider.js";
 import type { BillingIssuer, IssueDocumentCommand, TenantBillingConfig } from "../modules/billing/contracts.js";
+import { isPracticeSeries, PRACTICE_SERIES } from "../modules/billing/practiceMode.js";
 
 const tests: Array<[string, () => void]> = [];
 const test = (name: string, fn: () => void) => tests.push([name, fn]);
@@ -115,14 +116,25 @@ test("el token compartido solo se usa en sandbox y con permiso explícito", () =
   });
 });
 
-test("en producción no se emite con el simulador ni sin habilitar producción", () => {
+test("producción: el modo práctica se puede desactivar y la emisión real exige habilitación", () => {
   withEnv({ NODE_ENV: "production", ALLOW_MOCK_BILLING: undefined, BILLING_PRODUCTION_ENABLED: undefined }, () => {
-    assert.throws(() => assertIssuingAllowed(config({ providerCode: "mock" })), BillingConfigError);
+    assertIssuingAllowed(config({ providerCode: "mock" }));
     assert.throws(() => assertIssuingAllowed(config({ environment: "production" })), BillingConfigError);
+  });
+  withEnv({ NODE_ENV: "production", ALLOW_MOCK_BILLING: "false" }, () => {
+    assert.throws(() => assertIssuingAllowed(config({ providerCode: "mock" })), BillingConfigError);
   });
   withEnv({ NODE_ENV: "production", BILLING_PRODUCTION_ENABLED: "true" }, () => {
     assertIssuingAllowed(config({ environment: "production" }));
   });
+});
+
+// ---------- Modo práctica ----------
+test("las series de práctica empiezan con T y no chocan con las reales", () => {
+  assert.ok(isPracticeSeries(PRACTICE_SERIES.BOLETA));
+  assert.ok(isPracticeSeries(PRACTICE_SERIES.FACTURA));
+  assert.ok(isPracticeSeries(PRACTICE_SERIES.NOTA_CREDITO));
+  for (const real of ["B001", "F001", "BC01", "FC01", "BBB1", "FFF1"]) assert.ok(!isPracticeSeries(real));
 });
 
 // ---------- Adaptador APIsPERU ----------

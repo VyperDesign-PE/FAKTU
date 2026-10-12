@@ -2,7 +2,58 @@ import http from "node:http";
 
 const port = Number(process.env.PORT ?? 4100);
 const expectedToken = process.env.MOCK_DOCUMENT_TOKEN ?? "e2e-token";
-const stats = { dni: 0, ruc: 0 };
+const stats = { dni: 0, ruc: 0, nubefactIssued: 0, nubefactQueries: 0 };
+const nubefactToken = process.env.MOCK_NUBEFACT_TOKEN ?? "e2e-nubefact-token";
+const nubefactDocs = new Map();
+const cents = (value) => Math.round(Number(value) * 100);
+
+/**
+ * Simulador del API JSON de Nubefact (manual oficial): POST a la ruta con
+ * `Authorization: <token>`. Valida que las líneas cuadren con los totales,
+ * responde código 23 si el documento ya existe y 24 si no existe.
+ */
+function nubefact(body) {
+  const key = `${body.tipo_de_comprobante}-${body.serie}-${body.numero}`;
+  if (body.operacion === "consultar_comprobante") {
+    stats.nubefactQueries += 1;
+    const doc = nubefactDocs.get(key);
+    return doc ? [200, doc] : [400, { errors: "El documento indicado no existe o no fue enviado a NubeFacT", codigo: 24 }];
+  }
+  if (body.operacion !== "generar_comprobante") return [400, { errors: "Operación no soportada", codigo: 20 }];
+  if (nubefactDocs.has(key)) return [400, { errors: "Este documento ya existe en NubeFacT", codigo: 23 }];
+  const items = Array.isArray(body.items) ? body.items : [];
+  const sum = (field) => items.reduce((total, item) => total + cents(item[field]), 0);
+  if (!items.length || sum("subtotal") !== cents(body.total_gravada) || sum("igv") !== cents(body.total_igv) || sum("total") !== cents(body.total)) {
+    return [400, { errors: "La suma de las líneas no coincide con los totales", codigo: 20 }];
+  }
+  if (!/^[FB]/.test(String(body.serie)) || String(body.serie).length !== 4) return [400, { errors: "Serie inválida", codigo: 20 }];
+  if (body.tipo_de_comprobante === 1 && (body.cliente_tipo_de_documento !== "6" || !body.cliente_direccion)) {
+    return [400, { errors: "La factura requiere RUC y dirección del cliente", codigo: 20 }];
+  }
+  if (body.tipo_de_comprobante === 3 && !body.documento_que_se_modifica_serie) {
+    return [400, { errors: "La nota de crédito requiere el documento que modifica", codigo: 20 }];
+  }
+  stats.nubefactIssued += 1;
+  const id = `${body.serie}-${body.numero}-${Date.now()}`;
+  const doc = {
+    tipo_de_comprobante: body.tipo_de_comprobante,
+    serie: body.serie,
+    numero: body.numero,
+    enlace: `https://www.nubefact.com/cpe/${id}`,
+    enlace_del_pdf: `https://www.nubefact.com/cpe/${id}.pdf`,
+    enlace_del_xml: `https://www.nubefact.com/cpe/${id}.xml`,
+    enlace_del_cdr: `https://www.nubefact.com/cpe/${id}.cdr`,
+    aceptada_por_sunat: true,
+    sunat_description: `El comprobante ${body.serie}-${body.numero} ha sido aceptado`,
+    sunat_note: null,
+    sunat_responsecode: "0",
+    sunat_soap_error: "",
+    cadena_para_codigo_qr: `20000000001 | ${body.serie} | ${body.numero} | ${body.total_igv} | ${body.total}`,
+    codigo_hash: `hash-${id}`
+  };
+  nubefactDocs.set(key, doc);
+  return [200, doc];
+}
 
 function send(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -35,7 +86,20 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/reset") {
     stats.dni = 0;
     stats.ruc = 0;
+    stats.nubefactIssued = 0;
+    stats.nubefactQueries = 0;
+    nubefactDocs.clear();
     return send(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && req.url === "/nubefact") {
+    if (req.headers.authorization !== nubefactToken) return send(res, 401, { errors: "No se pudo autenticar, token incorrecto o eliminado", codigo: 10 });
+    try {
+      const [status, payload] = nubefact(await readJson(req));
+      return send(res, status, payload);
+    } catch {
+      return send(res, 400, { errors: "El archivo enviado no cumple con el formato establecido", codigo: 20 });
+    }
   }
 
   if (req.headers.authorization !== `Bearer ${expectedToken}`) {

@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "../../db/client.js";
 import { upsertCustomer } from "../customers/customerRepository.js";
-import type { BillingDocumentType, BillingIssueResult, IssueDocumentCommand } from "../billing/contracts.js";
+import type {
+  BillingDocumentType,
+  BillingIssueResult,
+  IssueDocumentCommand,
+  PaymentMethod,
+  SaleDocumentType
+} from "../billing/contracts.js";
 import { IGV_PERCENT, priceItems } from "./pricing.js";
+import { getTenantBillingConfig } from "../billing/tenantBillingConfigRepository.js";
+import { isPracticeSeries, PRACTICE_SERIES } from "../billing/practiceMode.js";
 
 export type ReceiptStatus = "PENDIENTE" | "ENVIANDO" | "ACEPTADO" | "OBSERVADO" | "RECHAZADO" | "ERROR";
 
@@ -14,21 +22,32 @@ export type ReceiptItemInput = {
   unit?: string;
 };
 
+export type ReceiptCustomer = {
+  documentType?: "DNI" | "RUC";
+  documentNumber?: string;
+  name?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+};
+
 export type ReceiptInput = {
   tenantId: string;
   clientTransactionId: string;
   temporaryNumber: string;
   documentType: BillingDocumentType;
-  customer?: {
-    documentType?: "DNI" | "RUC";
-    documentNumber?: string;
-    name?: string;
-    address?: string;
-    phone?: string;
-    email?: string;
-  };
+  customer?: ReceiptCustomer;
   items: ReceiptItemInput[];
   total: number;
+  paymentMethod?: PaymentMethod;
+  /** Monto entregado por el cliente (solo efectivo), para calcular el vuelto. */
+  amountReceived?: number;
+  /** Solo NOTA_CREDITO: comprobante que se anula. */
+  relatedReceiptId?: string;
+  relatedDocumentType?: SaleDocumentType;
+  creditNoteReason?: string;
+  /** Fuerza serie de práctica (por defecto: si el negocio usa el simulador). */
+  practice?: boolean;
 };
 
 export type ReceiptRecord = {
@@ -52,12 +71,21 @@ export type ReceiptRecord = {
     name?: string;
     address?: string;
   };
+  paymentMethod: PaymentMethod;
+  amountReceived?: number;
+  changeAmount?: number;
+  relatedReceiptId?: string;
+  creditNoteReason?: string;
+  /** Nota de crédito que anula este comprobante, si existe. */
+  creditNote?: { id: string; status: ReceiptStatus; officialNumber?: string };
   providerCode?: string;
   providerDocumentId?: string;
   providerMessage?: string;
   pdfUrl?: string;
   xmlUrl?: string;
   cdrUrl?: string;
+  qrData?: string;
+  hash?: string;
   attemptCount: number;
   items?: ReceiptItemInput[];
 };
@@ -81,12 +109,22 @@ type ReceiptRow = {
   customer_document_number: string | null;
   customer_name: string | null;
   customer_address: string | null;
+  payment_method: PaymentMethod;
+  amount_received: string | number | null;
+  change_amount: string | number | null;
+  related_receipt_id: string | null;
+  credit_note_reason: string | null;
+  credit_note_id: string | null;
+  credit_note_status: ReceiptStatus | null;
+  credit_note_number: string | null;
   provider_code: string | null;
   provider_document_id: string | null;
   provider_message: string | null;
   provider_pdf_url: string | null;
   provider_xml_url: string | null;
   provider_cdr_url: string | null;
+  provider_qr_data: string | null;
+  provider_hash: string | null;
   attempt_count: number;
 };
 
@@ -98,11 +136,31 @@ type ReceiptItemRow = {
   unit_code: string;
 };
 
-function defaultSeries(documentType: BillingDocumentType) {
-  return documentType === "BOLETA"
-    ? process.env.DEFAULT_BOLETA_SERIES ?? "B001"
-    : process.env.DEFAULT_FACTURA_SERIES ?? "F001";
-}
+/** Columnas de un comprobante, incluida la nota de crédito que lo anula (si existe). */
+const receiptColumns = sql`
+  r.id, r.tenant_id, r.customer_id, r.client_transaction_id, r.temporary_number,
+  r.document_type, r.series, r.correlative, r.official_number, r.issue_date,
+  r.subtotal, r.igv, r.total, r.sunat_status,
+  r.customer_document_type, r.customer_document_number, r.customer_name, r.customer_address,
+  r.payment_method, r.amount_received, r.change_amount, r.related_receipt_id, r.credit_note_reason,
+  nc.id as credit_note_id, nc.sunat_status as credit_note_status, nc.official_number as credit_note_number,
+  r.provider_code, r.provider_document_id, r.provider_message,
+  r.provider_pdf_url, r.provider_xml_url, r.provider_cdr_url, r.provider_qr_data, r.provider_hash,
+  r.attempt_count
+`;
+const receiptFrom = sql`
+  receipts r
+  left join lateral (
+    -- La nota de crédito vigente; si todas fueron rechazadas, la más reciente.
+    select id, sunat_status, official_number
+    from receipts
+    where related_receipt_id = r.id and document_type = 'NOTA_CREDITO'
+    order by (sunat_status = 'RECHAZADO'), created_at desc
+    limit 1
+  ) nc on true
+`;
+
+const optionalNumber = (value: string | number | null) => (value === null ? undefined : Number(value));
 
 function mapReceipt(row: ReceiptRow): ReceiptRecord {
   return {
@@ -126,35 +184,43 @@ function mapReceipt(row: ReceiptRow): ReceiptRecord {
       name: row.customer_name ?? undefined,
       address: row.customer_address ?? undefined
     } : undefined,
+    paymentMethod: row.payment_method,
+    amountReceived: optionalNumber(row.amount_received),
+    changeAmount: optionalNumber(row.change_amount),
+    relatedReceiptId: row.related_receipt_id ?? undefined,
+    creditNoteReason: row.credit_note_reason ?? undefined,
+    creditNote: row.credit_note_id
+      ? { id: row.credit_note_id, status: row.credit_note_status ?? "PENDIENTE", officialNumber: row.credit_note_number ?? undefined }
+      : undefined,
     providerCode: row.provider_code ?? undefined,
     providerDocumentId: row.provider_document_id ?? undefined,
     providerMessage: row.provider_message ?? undefined,
     pdfUrl: row.provider_pdf_url ?? undefined,
     xmlUrl: row.provider_xml_url ?? undefined,
     cdrUrl: row.provider_cdr_url ?? undefined,
+    qrData: row.provider_qr_data ?? undefined,
+    hash: row.provider_hash ?? undefined,
     attemptCount: row.attempt_count
   };
 }
 
-const receiptSelect = `
-  id, tenant_id, customer_id, client_transaction_id, temporary_number,
-  document_type, series, correlative, official_number, issue_date,
-  subtotal, igv, total, sunat_status,
-  customer_document_type, customer_document_number, customer_name, customer_address,
-  provider_code, provider_document_id, provider_message,
-  provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
-`;
+function defaultSeries(documentType: BillingDocumentType, relatedDocumentType?: SaleDocumentType, practice = false) {
+  if (practice) return PRACTICE_SERIES[documentType];
+  if (documentType === "NOTA_CREDITO") {
+    // Las notas de crédito usan serie F... para facturas y B... para boletas.
+    return relatedDocumentType === "FACTURA"
+      ? process.env.DEFAULT_NC_FACTURA_SERIES ?? "FC01"
+      : process.env.DEFAULT_NC_BOLETA_SERIES ?? "BC01";
+  }
+  return documentType === "BOLETA"
+    ? process.env.DEFAULT_BOLETA_SERIES ?? "B001"
+    : process.env.DEFAULT_FACTURA_SERIES ?? "F001";
+}
 
 export async function getReceiptByTransaction(tenantId: string, clientTransactionId: string): Promise<ReceiptRecord | null> {
   const rows = await sql<ReceiptRow[]>`
-    select id, tenant_id, customer_id, client_transaction_id, temporary_number,
-      document_type, series, correlative, official_number, issue_date,
-      subtotal, igv, total, sunat_status,
-      customer_document_type, customer_document_number, customer_name, customer_address,
-      provider_code, provider_document_id, provider_message,
-      provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
-    from receipts
-    where tenant_id = ${tenantId} and client_transaction_id = ${clientTransactionId}
+    select ${receiptColumns} from ${receiptFrom}
+    where r.tenant_id = ${tenantId} and r.client_transaction_id = ${clientTransactionId}
     limit 1
   `;
   return rows[0] ? mapReceipt(rows[0]) : null;
@@ -162,14 +228,8 @@ export async function getReceiptByTransaction(tenantId: string, clientTransactio
 
 export async function getReceiptById(tenantId: string, receiptId: string): Promise<ReceiptRecord | null> {
   const rows = await sql<ReceiptRow[]>`
-    select id, tenant_id, customer_id, client_transaction_id, temporary_number,
-      document_type, series, correlative, official_number, issue_date,
-      subtotal, igv, total, sunat_status,
-      customer_document_type, customer_document_number, customer_name, customer_address,
-      provider_code, provider_document_id, provider_message,
-      provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
-    from receipts
-    where tenant_id = ${tenantId} and id = ${receiptId}
+    select ${receiptColumns} from ${receiptFrom}
+    where r.tenant_id = ${tenantId} and r.id = ${receiptId}
     limit 1
   `;
   if (!rows[0]) return null;
@@ -197,16 +257,20 @@ async function getReceiptItems(receiptId: string): Promise<ReceiptItemInput[]> {
 export async function listReceipts(tenantId: string, limit = 100): Promise<ReceiptRecord[]> {
   const safeLimit = Math.min(Math.max(limit, 1), 200);
   const rows = await sql<ReceiptRow[]>`
-    select id, tenant_id, customer_id, client_transaction_id, temporary_number,
-      document_type, series, correlative, official_number, issue_date,
-      subtotal, igv, total, sunat_status,
-      customer_document_type, customer_document_number, customer_name, customer_address,
-      provider_code, provider_document_id, provider_message,
-      provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
-    from receipts
-    where tenant_id = ${tenantId}
-    order by issue_date desc
+    select ${receiptColumns} from ${receiptFrom}
+    where r.tenant_id = ${tenantId}
+    order by r.issue_date desc
     limit ${safeLimit}
+  `;
+  return rows.map(mapReceipt);
+}
+
+/** Comprobantes emitidos en un rango [from, to) — para cierre de caja y reportes. */
+export async function listReceiptsBetween(tenantId: string, from: Date, to: Date): Promise<ReceiptRecord[]> {
+  const rows = await sql<ReceiptRow[]>`
+    select ${receiptColumns} from ${receiptFrom}
+    where r.tenant_id = ${tenantId} and r.issue_date >= ${from} and r.issue_date < ${to}
+    order by r.issue_date asc, r.series asc, r.correlative asc
   `;
   return rows.map(mapReceipt);
 }
@@ -216,7 +280,7 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
   if (existing) return { receipt: existing, created: false };
 
   let customerId: string | undefined;
-  if (input.customer?.documentType && input.customer.documentNumber && input.customer.name) {
+  if (input.documentType !== "NOTA_CREDITO" && input.customer?.documentType && input.customer.documentNumber && input.customer.name) {
     const customer = await upsertCustomer({
       tenantId: input.tenantId,
       documentType: input.customer.documentType,
@@ -233,23 +297,22 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
   // Los montos se recalculan siempre en el servidor a partir de los ítems.
   const priced = priceItems(input.items);
   const { subtotal, igv, total } = priced;
-  const series = defaultSeries(input.documentType);
+  const paymentMethod: PaymentMethod = input.paymentMethod ?? "EFECTIVO";
+  const amountReceived = paymentMethod === "EFECTIVO" && input.amountReceived !== undefined ? input.amountReceived : undefined;
+  const changeAmount = amountReceived !== undefined ? Math.round((amountReceived - total) * 100) / 100 : undefined;
+  // Sin facturación activa (simulador) se usan series de práctica.
+  const practice = input.practice ?? (await getTenantBillingConfig(input.tenantId)).providerCode === "mock";
+  const series = defaultSeries(input.documentType, input.relatedDocumentType, practice);
   const receiptId = randomUUID();
 
   try {
-    const row = await sql.begin(async (tx) => {
-      const duplicate = await tx<ReceiptRow[]>`
-        select id, tenant_id, customer_id, client_transaction_id, temporary_number,
-          document_type, series, correlative, official_number, issue_date,
-          subtotal, igv, total, sunat_status,
-          customer_document_type, customer_document_number, customer_name, customer_address,
-          provider_code, provider_document_id, provider_message,
-          provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
-        from receipts
+    const createdId = await sql.begin(async (tx) => {
+      const duplicate = await tx<{ id: string }[]>`
+        select id from receipts
         where tenant_id = ${input.tenantId} and client_transaction_id = ${input.clientTransactionId}
         limit 1
       `;
-      if (duplicate[0]) return duplicate[0];
+      if (duplicate[0]) return duplicate[0].id;
 
       await tx`
         insert into document_series (id, tenant_id, document_type, series, last_correlative)
@@ -269,25 +332,22 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
       if (!sequence[0]) throw new Error("No se pudo reservar el correlativo del comprobante");
       const correlative = Number(sequence[0].last_correlative);
 
-      const inserted = await tx<ReceiptRow[]>`
+      await tx`
         insert into receipts (
           id, tenant_id, customer_id, client_transaction_id, temporary_number,
           document_type, series, correlative, issue_date, currency,
           subtotal, igv, total, igv_rate, sunat_status,
-          customer_document_type, customer_document_number, customer_name, customer_address
+          customer_document_type, customer_document_number, customer_name, customer_address,
+          payment_method, amount_received, change_amount, related_receipt_id, credit_note_reason
         ) values (
           ${receiptId}, ${input.tenantId}, ${customerId ?? null}, ${input.clientTransactionId}, ${input.temporaryNumber},
           ${input.documentType}, ${series}, ${correlative}, now(), 'PEN',
           ${subtotal}, ${igv}, ${total}, ${IGV_PERCENT}, 'PENDIENTE',
           ${input.customer?.documentType ?? null}, ${input.customer?.documentNumber ?? null},
-          ${input.customer?.name ?? null}, ${input.customer?.address ?? null}
+          ${input.customer?.name ?? null}, ${input.customer?.address ?? null},
+          ${paymentMethod}, ${amountReceived ?? null}, ${changeAmount ?? null},
+          ${input.relatedReceiptId ?? null}, ${input.creditNoteReason ?? null}
         )
-        returning id, tenant_id, customer_id, client_transaction_id, temporary_number,
-          document_type, series, correlative, official_number, issue_date,
-          subtotal, igv, total, sunat_status,
-          customer_document_type, customer_document_number, customer_name, customer_address,
-          provider_code, provider_document_id, provider_message,
-          provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
       `;
 
       for (const [index, item] of input.items.entries()) {
@@ -303,12 +363,12 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
         `;
       }
 
-      return inserted[0];
+      return receiptId;
     });
 
-    const mapped = mapReceipt(row);
-    mapped.items = input.items;
-    return { receipt: mapped, created: row.id === receiptId };
+    const stored = await getReceiptById(input.tenantId, createdId);
+    if (!stored) throw new Error("No pudimos recuperar el comprobante preparado.");
+    return { receipt: stored, created: createdId === receiptId };
   } catch (error) {
     const pgError = error as { code?: string };
     if (pgError.code === "23505") {
@@ -317,6 +377,61 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
     }
     throw error;
   }
+}
+
+export class CreditNoteError extends Error {
+  constructor(readonly code: string, message: string, readonly statusCode = 409) {
+    super(message);
+    this.name = "CreditNoteError";
+  }
+}
+
+/**
+ * Prepara la nota de crédito que anula por completo un comprobante aceptado
+ * (motivo SUNAT 01 "Anulación de la operación").
+ *
+ * Es idempotente: el clientTransactionId se deriva del comprobante original,
+ * así que repetir la anulación devuelve la misma nota de crédito.
+ */
+export async function prepareCreditNote(tenantId: string, originalId: string, reason: string) {
+  const original = await getReceiptById(tenantId, originalId);
+  if (!original) throw new CreditNoteError("NOT_FOUND", "Comprobante no encontrado", 404);
+  if (original.documentType === "NOTA_CREDITO") throw new CreditNoteError("NOT_VOIDABLE", "Una nota de crédito no se puede anular desde FAKTU.");
+  if (original.creditNote && original.creditNote.status !== "RECHAZADO") {
+    return prepareReceiptForExistingCreditNote(tenantId, original.creditNote.id);
+  }
+  if (original.status !== "ACEPTADO") {
+    throw new CreditNoteError("NOT_ACCEPTED", "Solo se pueden anular comprobantes aceptados por SUNAT.");
+  }
+
+  // Si SUNAT rechazó una nota anterior, el nuevo intento usa otra clave.
+  const [{ rejected }] = await sql<{ rejected: number }[]>`
+    select count(*)::int as rejected from receipts
+    where tenant_id = ${tenantId} and related_receipt_id = ${original.id}
+      and document_type = 'NOTA_CREDITO' and sunat_status = 'RECHAZADO'
+  `;
+
+  return prepareReceipt({
+    tenantId,
+    clientTransactionId: rejected ? `nc-${original.id}-r${rejected}` : `nc-${original.id}`,
+    temporaryNumber: `NC-${original.series}-${original.correlative}`,
+    documentType: "NOTA_CREDITO",
+    customer: original.customer,
+    items: original.items ?? [],
+    total: original.total,
+    paymentMethod: original.paymentMethod,
+    relatedReceiptId: original.id,
+    relatedDocumentType: original.documentType,
+    creditNoteReason: reason,
+    // La nota de crédito sigue el modo del comprobante que anula.
+    practice: isPracticeSeries(original.series)
+  });
+}
+
+async function prepareReceiptForExistingCreditNote(tenantId: string, creditNoteId: string) {
+  const receipt = await getReceiptById(tenantId, creditNoteId);
+  if (!receipt) throw new CreditNoteError("NOT_FOUND", "Nota de crédito no encontrada", 404);
+  return { receipt, created: false };
 }
 
 const FINAL_STATUSES: ReceiptStatus[] = ["ACEPTADO", "RECHAZADO"];
@@ -334,7 +449,7 @@ const STALE_SENDING_SECONDS = Number(process.env.RECEIPT_STALE_SENDING_SECONDS ?
  * y deben responder con el estado actual en vez de enviar en paralelo.
  */
 export async function claimReceiptForSending(tenantId: string, receiptId: string): Promise<ReceiptRecord | null> {
-  const rows = await sql<ReceiptRow[]>`
+  const rows = await sql<{ id: string }[]>`
     update receipts
     set sunat_status = 'ENVIANDO', attempt_count = attempt_count + 1, last_attempt_at = now(), updated_at = now()
     where tenant_id = ${tenantId} and id = ${receiptId}
@@ -349,59 +464,41 @@ export async function claimReceiptForSending(tenantId: string, receiptId: string
 }
 
 export async function markReceiptError(tenantId: string, receiptId: string, message: string): Promise<ReceiptRecord> {
-  const rows = await sql<ReceiptRow[]>`
+  await sql`
     update receipts
     set sunat_status = 'ERROR', provider_message = ${message}, updated_at = now()
     where tenant_id = ${tenantId} and id = ${receiptId}
       and sunat_status not in ('ACEPTADO', 'RECHAZADO')
-    returning id, tenant_id, customer_id, client_transaction_id, temporary_number,
-      document_type, series, correlative, official_number, issue_date,
-      subtotal, igv, total, sunat_status,
-      customer_document_type, customer_document_number, customer_name, customer_address,
-      provider_code, provider_document_id, provider_message,
-      provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
   `;
-  if (!rows[0]) {
-    const current = await getReceiptById(tenantId, receiptId);
-    if (!current) throw new Error("Comprobante no encontrado");
-    return current;
-  }
-  return mapReceipt(rows[0]);
+  const current = await getReceiptById(tenantId, receiptId);
+  if (!current) throw new Error("Comprobante no encontrado");
+  return current;
 }
 
 export async function applyBillingResult(tenantId: string, receiptId: string, result: BillingIssueResult): Promise<ReceiptRecord> {
   const status: ReceiptStatus = result.status === "ACCEPTED" ? "ACEPTADO" : result.status === "REJECTED" ? "RECHAZADO" : "PENDIENTE";
-  const rows = await sql<ReceiptRow[]>`
+  const updated = await sql<{ id: string }[]>`
     update receipts
     set
       sunat_status = ${status},
       official_number = coalesce(${result.officialNumber ?? null}, official_number),
       provider_code = ${result.providerCode},
-      provider_document_id = ${result.providerDocumentId ?? null},
+      provider_document_id = coalesce(${result.providerDocumentId ?? null}, provider_document_id),
       provider_message = ${result.message},
-      provider_pdf_url = ${result.pdfUrl ?? null},
-      provider_xml_url = ${result.xmlUrl ?? null},
-      provider_cdr_url = ${result.cdrUrl ?? null},
+      provider_pdf_url = coalesce(${result.pdfUrl ?? null}, provider_pdf_url),
+      provider_xml_url = coalesce(${result.xmlUrl ?? null}, provider_xml_url),
+      provider_cdr_url = coalesce(${result.cdrUrl ?? null}, provider_cdr_url),
+      provider_qr_data = coalesce(${result.artifacts?.qrData ?? null}, provider_qr_data),
+      provider_hash = coalesce(${result.artifacts?.hash ?? null}, provider_hash),
       updated_at = now()
     where tenant_id = ${tenantId} and id = ${receiptId}
       -- Un estado final (aceptado/rechazado) nunca vuelve a pendiente por una
       -- respuesta tardía o una conciliación concurrente.
       and sunat_status not in ('ACEPTADO', 'RECHAZADO')
-    returning id, tenant_id, customer_id, client_transaction_id, temporary_number,
-      document_type, series, correlative, official_number, issue_date,
-      subtotal, igv, total, sunat_status,
-      customer_document_type, customer_document_number, customer_name, customer_address,
-      provider_code, provider_document_id, provider_message,
-      provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
+    returning id
   `;
 
-  if (!rows[0]) {
-    const current = await getReceiptById(tenantId, receiptId);
-    if (!current) throw new Error("Comprobante no encontrado");
-    return current;
-  }
-
-  if (result.artifacts) {
+  if (updated[0] && result.artifacts) {
     await sql`
       insert into receipt_provider_artifacts (
         receipt_id, provider_code, provider_hash, xml_content, cdr_zip_base64, raw_response, updated_at
@@ -420,13 +517,19 @@ export async function applyBillingResult(tenantId: string, receiptId: string, re
     `;
   }
 
-  const stored = mapReceipt(rows[0]);
-  stored.items = await getReceiptItems(receiptId);
-  return stored;
+  const current = await getReceiptById(tenantId, receiptId);
+  if (!current) throw new Error("Comprobante no encontrado");
+  return current;
 }
 
 export async function buildBillingCommand(receipt: ReceiptRecord): Promise<IssueDocumentCommand> {
   const items = receipt.items ?? await getReceiptItems(receipt.id);
+  let relatedDocument: IssueDocumentCommand["relatedDocument"];
+  if (receipt.documentType === "NOTA_CREDITO" && receipt.relatedReceiptId) {
+    const related = await getReceiptById(receipt.tenantId, receipt.relatedReceiptId);
+    if (!related || related.documentType === "NOTA_CREDITO") throw new Error("No encontramos el comprobante que anula esta nota de crédito.");
+    relatedDocument = { documentType: related.documentType, series: related.series, correlative: related.correlative };
+  }
   return {
     tenantId: receipt.tenantId,
     clientTransactionId: receipt.clientTransactionId,
@@ -445,8 +548,24 @@ export async function buildBillingCommand(receipt: ReceiptRecord): Promise<Issue
     })),
     subtotal: receipt.subtotal,
     igv: receipt.igv,
-    total: receipt.total
+    total: receipt.total,
+    paymentMethod: receipt.paymentMethod,
+    relatedDocument,
+    creditNoteReason: receipt.documentType === "NOTA_CREDITO"
+      ? { code: "01", description: receipt.creditNoteReason || "ANULACIÓN DE LA OPERACIÓN" }
+      : undefined
   };
+}
+
+export function displayNumber(receipt: Pick<ReceiptRecord, "officialNumber" | "series" | "correlative">) {
+  return receipt.officialNumber ?? `${receipt.series}-${String(receipt.correlative).padStart(8, "0")}`;
+}
+
+function apiStatus(status: ReceiptStatus) {
+  return status === "ACEPTADO" ? "ACCEPTED"
+    : status === "RECHAZADO" ? "REJECTED"
+    : status === "ERROR" ? "ERROR"
+    : "PENDING";
 }
 
 export function receiptToApi(receipt: ReceiptRecord) {
@@ -462,12 +581,19 @@ export function receiptToApi(receipt: ReceiptRecord) {
     subtotal: receipt.subtotal,
     igv: receipt.igv,
     total: receipt.total,
-    status: receipt.status === "ACEPTADO" ? "ACCEPTED"
-      : receipt.status === "RECHAZADO" ? "REJECTED"
-      : receipt.status === "ERROR" ? "ERROR"
-      : "PENDING",
+    status: apiStatus(receipt.status),
     sunatStatus: receipt.status,
     customer: receipt.customer,
+    paymentMethod: receipt.paymentMethod,
+    amountReceived: receipt.amountReceived,
+    changeAmount: receipt.changeAmount,
+    relatedReceiptId: receipt.relatedReceiptId,
+    creditNoteReason: receipt.creditNoteReason,
+    /** true cuando una nota de crédito aceptada anuló este comprobante. */
+    voided: receipt.creditNote?.status === "ACEPTADO",
+    creditNote: receipt.creditNote
+      ? { id: receipt.creditNote.id, status: apiStatus(receipt.creditNote.status), officialNumber: receipt.creditNote.officialNumber }
+      : undefined,
     providerCode: receipt.providerCode,
     providerDocumentId: receipt.providerDocumentId,
     message: receipt.providerMessage,

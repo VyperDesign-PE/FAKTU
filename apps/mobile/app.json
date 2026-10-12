@@ -2,7 +2,7 @@
   "expo": {
     "name": "FAKTU",
     "slug": "faktu",
-    "version": "0.13.0",
+    "version": "0.14.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
@@ -10,6 +10,17 @@
     },
     "ios": {
       "bundleIdentifier": "pe.faktu.app"
-    }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "FAKTU",
+      "shortName": "FAKTU",
+      "lang": "es",
+      "themeColor": "#5B2FD5",
+      "backgroundColor": "#F7F8FC",
+      "favicon": "./public/favicon.png"
+    },
+    "icon": "./assets/icon.png"
   }
 }

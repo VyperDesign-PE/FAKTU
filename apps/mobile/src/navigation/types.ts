@@ -43,6 +43,7 @@ export type RootStackParamList = {
   CustomerForm: { customer?: RemoteCustomer } | undefined;
   ReceiptHistory: undefined;
   ReceiptDetail: { clientTransactionId: string };
+  CashClose: undefined;
   BillingSettings: undefined;
   SystemStatus: undefined;
   Business: undefined;

@@ -32,8 +32,10 @@ jobs:
       - run: npm ci
       - name: Typecheck (API y app móvil)
         run: npm run typecheck
-      - name: Pruebas unitarias
+      - name: Pruebas unitarias y de adaptadores (Nubefact, APIsPERU)
         run: npm test
+      - name: Compilar app web (PWA)
+        run: npm run build:web
       - name: Integración de emisión (PostgreSQL)
         run: npm run test:integration
         env:

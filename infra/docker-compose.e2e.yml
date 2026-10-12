@@ -46,6 +46,9 @@ services:
       PUBLIC_APP_BASE_URL: http://api:4000
       PUBLIC_RECEIPT_LINK_SECRET: e2e-public-link-secret-change-in-production
       DELIVERY_PROVIDER: mock
+      BILLING_ALLOW_SHARED_SANDBOX_TOKEN: "true"
+      NUBEFACT_API_URL: http://mock-document-api:4100/nubefact
+      NUBEFACT_API_TOKEN: e2e-nubefact-token
     depends_on:
       postgres:
         condition: service_healthy

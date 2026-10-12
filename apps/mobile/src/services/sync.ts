@@ -23,6 +23,7 @@ export async function syncPendingReceipts(scope: string) {
             await patchReceipt(scope, receipt.clientTransactionId, {
               status: "ACCEPTED",
               officialNumber: result.officialNumber,
+              testMode: result.providerCode === "mock",
               errorMessage: undefined
             });
             break;

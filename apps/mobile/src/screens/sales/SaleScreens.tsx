@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
 import { Card, Chip, InfoRow, PrimaryButton, SectionTitle, TextField } from "../../components/Ui";
 import { CustomerDocumentLookupField } from "../../components/customer/CustomerDocumentLookupField";
 import { useApp } from "../../context/AppContext";
-import type { Customer } from "../../domain/types";
+import { PAYMENT_METHODS, type Customer, type PaymentMethod } from "../../domain/types";
 import { createReceiptSharePackage, type ReceiptSharePackage } from "../../services/api";
 import { theme } from "../../theme";
+import { shareLink, showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
@@ -35,7 +36,7 @@ export function AddProductScreen({ navigation }: P<"AddProduct">) {
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [unit, setUnit] = useState("Unidad");
   async function save() {
     const amount = Number(price.replace(",", "."));
-    if (!name.trim() || !Number.isFinite(amount) || amount < 0) return Alert.alert("Revisa los datos", "Ingresa nombre y precio válido.");
+    if (!name.trim() || !Number.isFinite(amount) || amount < 0) return showAlert("Revisa los datos", "Ingresa nombre y precio válido.");
     const product = { id: `product-${Date.now()}`, name: name.trim(), unitPrice: amount, unit, favorite: true };
     await addProductToCatalog(product); addItem(product); navigation.navigate("NewSale");
   }
@@ -53,7 +54,7 @@ export function QuickSaleScreen({ navigation }: P<"QuickSale">) {
   const [concept, setConcept] = useState(""); const [amount, setAmount] = useState("");
   function add() {
     const price = Number(amount.replace(",", "."));
-    if (!concept.trim() || !Number.isFinite(price) || price <= 0) return Alert.alert("Revisa los datos", "Ingresa concepto e importe.");
+    if (!concept.trim() || !Number.isFinite(price) || price <= 0) return showAlert("Revisa los datos", "Ingresa concepto e importe.");
     addItem({ id: `manual-${Date.now()}`, name: concept.trim(), unitPrice: price, unit: "Servicio", favorite: false }); navigation.navigate("Cart");
   }
   return <Screen title="Venta rápida / manual" subtitle="Úsala para algo que no necesitas guardar en tu catálogo.">
@@ -91,26 +92,28 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
   const [mode, setMode] = useState<"NONE" | "DNI" | "RUC">(draft.documentType === "FACTURA" ? "RUC" : "NONE");
   const [number, setNumber] = useState(draft.customer?.documentNumber ?? "");
   const [name, setName] = useState(draft.customer?.name ?? "");
+  const [address, setAddress] = useState(draft.customer?.address ?? "");
 
   function changeMode(nextMode: "NONE" | "DNI" | "RUC") {
     if (draft.documentType === "FACTURA" && nextMode !== "RUC") {
-      return Alert.alert("Factura con RUC", "Para emitir factura necesitamos identificar al cliente con RUC.");
+      return showAlert("Factura con RUC", "Para emitir factura necesitamos identificar al cliente con RUC.");
     }
     setMode(nextMode);
     setNumber("");
     setName("");
+    setAddress("");
   }
 
   function next() {
-    if (mustIdentify && mode === "NONE") return Alert.alert("Identificación requerida", "Para esta operación necesitamos identificar al cliente.");
-    if (draft.documentType === "FACTURA" && mode !== "RUC") return Alert.alert("Factura con RUC", "Para emitir factura selecciona RUC.");
+    if (mustIdentify && mode === "NONE") return showAlert("Identificación requerida", "Para esta operación necesitamos identificar al cliente.");
+    if (draft.documentType === "FACTURA" && mode !== "RUC") return showAlert("Factura con RUC", "Para emitir factura selecciona RUC.");
 
     let customer: Customer | undefined;
     if (mode !== "NONE") {
       const expectedLength = mode === "DNI" ? 8 : 11;
-      if (number.length !== expectedLength) return Alert.alert("Documento incompleto", mode === "DNI" ? "Ingresa los 8 dígitos del DNI." : "Ingresa los 11 dígitos del RUC.");
-      if (!name.trim()) return Alert.alert("Falta el nombre", "Busca el documento o escribe el nombre manualmente.");
-      customer = { documentType: mode, documentNumber: number, name: name.trim() };
+      if (number.length !== expectedLength) return showAlert("Documento incompleto", mode === "DNI" ? "Ingresa los 8 dígitos del DNI." : "Ingresa los 11 dígitos del RUC.");
+      if (!name.trim()) return showAlert("Falta el nombre", "Busca el documento o escribe el nombre manualmente.");
+      customer = { documentType: mode, documentNumber: number, name: name.trim(), ...(address.trim() ? { address: address.trim() } : {}) };
     }
 
     setCustomer(customer);
@@ -132,7 +135,11 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
         online={online}
         onNumeroChange={setNumber}
         onNombreChange={setName}
+        onResolved={(result) => setAddress(result.direccion ?? "")}
       />
+    ) : null}
+    {mode === "RUC" && draft.documentType === "FACTURA" ? (
+      <TextField label="Dirección del cliente" value={address} onChangeText={setAddress} placeholder="Se completa con el padrón SUNAT si la dejas vacía" />
     ) : null}
 
     {!online ? <Card tone="warning"><Text style={styles.warning}>Sin Internet: completa el nombre manualmente. La venta quedará guardada y se sincronizará cuando vuelva la conexión.</Text></Card> : null}
@@ -141,13 +148,31 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
 }
 
 export function SaleSummaryScreen({ navigation }: P<"SaleSummary">) {
-  const { draft, createReceipt, online } = useApp();
+  const { draft, createReceipt, online, setPayment } = useApp();
   const total = totalOf(draft.items);
   const igv = total - total / 1.18;
   const base = total - igv;
   const [busy, setBusy] = useState(false);
+  const [received, setReceived] = useState(draft.amountReceived ? draft.amountReceived.toFixed(2) : "");
+  const receivedAmount = received.trim() ? Number(received.replace(",", ".")) : undefined;
+  const isCash = draft.paymentMethod === "EFECTIVO";
+  const change = isCash && receivedAmount !== undefined && Number.isFinite(receivedAmount) ? receivedAmount - total : undefined;
+
+  function choosePayment(method: PaymentMethod) {
+    setPayment(method, method === "EFECTIVO" ? receivedAmount : undefined);
+  }
+
+  function changeReceived(value: string) {
+    setReceived(value);
+    const parsed = value.trim() ? Number(value.replace(",", ".")) : undefined;
+    setPayment("EFECTIVO", parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined);
+  }
+
   async function emit() {
-    if (!draft.items.length) return Alert.alert("Venta vacía", "Agrega al menos un producto.");
+    if (!draft.items.length) return showAlert("Venta vacía", "Agrega al menos un producto.");
+    if (isCash && receivedAmount !== undefined && (!Number.isFinite(receivedAmount) || receivedAmount + 0.001 < total)) {
+      return showAlert("Monto insuficiente", "El monto recibido es menor al total. Corrígelo o déjalo vacío.");
+    }
     setBusy(true);
     try { await createReceipt(); navigation.replace(online ? "EmissionResult" : "TemporaryReceipt"); }
     finally { setBusy(false); }
@@ -156,6 +181,14 @@ export function SaleSummaryScreen({ navigation }: P<"SaleSummary">) {
     <Card tone="success"><Text style={styles.docTitle}>{draft.documentType}</Text>{draft.customer ? <><InfoRow label="Cliente" value={draft.customer.name ?? "-"} /><InfoRow label={draft.customer.documentType ?? "Documento"} value={draft.customer.documentNumber ?? "-"} /></> : <InfoRow label="Cliente" value="Público general" />}</Card>
     <Card>{draft.items.map((item) => <InfoRow key={item.id} label={`${item.name} × ${item.quantity}`} value={`S/ ${(item.quantity * item.unitPrice).toFixed(2)}`} />)}</Card>
     <Card><InfoRow label="Subtotal referencial" value={`S/ ${base.toFixed(2)}`} /><InfoRow label="IGV incluido (18%)" value={`S/ ${igv.toFixed(2)}`} /><InfoRow label="TOTAL A PAGAR" value={`S/ ${total.toFixed(2)}`} /></Card>
+    <SectionTitle>¿Cómo paga el cliente?</SectionTitle>
+    <View style={styles.chips}>
+      {PAYMENT_METHODS.map((option) => <Chip key={option.value} label={option.label} active={draft.paymentMethod === option.value} onPress={() => choosePayment(option.value)} />)}
+    </View>
+    {isCash ? <>
+      <TextField label="Recibido (opcional)" value={received} onChangeText={changeReceived} keyboardType="decimal-pad" placeholder={total.toFixed(2)} />
+      {change !== undefined ? <Card tone={change >= -0.001 ? "success" : "danger"}><InfoRow label={change >= -0.001 ? "VUELTO" : "FALTA"} value={`S/ ${Math.abs(change).toFixed(2)}`} /></Card> : null}
+    </> : null}
     <PrimaryButton label={busy ? "PROCESANDO..." : online ? "EMITIR" : "GUARDAR Y EMITIR AL VOLVER INTERNET"} onPress={emit} disabled={busy} />
   </Screen>;
 }
@@ -165,11 +198,11 @@ export function EmissionResultScreen({ navigation }: P<"EmissionResult">) {
   const current = queue.find((r) => r.clientTransactionId === lastReceipt?.clientTransactionId) ?? lastReceipt;
   const accepted = current?.status === "ACCEPTED";
   const rejected = current?.status === "REJECTED";
-  const title = accepted ? "¡Comprobante emitido!" : rejected ? "Comprobante rechazado" : "Venta registrada";
-  const subtitle = accepted ? "El proveedor de facturación aceptó el comprobante." : rejected ? "Revisa el motivo y registra la venta nuevamente." : "El comprobante se está procesando.";
+  const title = accepted ? (current?.testMode ? "¡Venta registrada en modo pruebas!" : "¡Comprobante emitido!") : rejected ? "Comprobante rechazado" : "Venta registrada";
+  const subtitle = accepted ? (current?.testMode ? "Este comprobante es de prueba y no tiene validez ante SUNAT." : "SUNAT aceptó el comprobante.") : rejected ? "Revisa el motivo y registra la venta nuevamente." : "El comprobante se está procesando.";
   return <Screen title={title} subtitle={subtitle}>
     <View style={styles.resultIcon}><Text style={styles.resultCheck}>{accepted ? "✓" : rejected ? "✕" : "…"}</Text></View>
-    <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} /></Card>
+    <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} />{current?.paymentMethod ? <InfoRow label="Pago" value={PAYMENT_METHODS.find((m) => m.value === current.paymentMethod)?.label ?? current.paymentMethod} /> : null}{current?.amountReceived !== undefined ? <InfoRow label="Vuelto" value={`S/ ${(current.amountReceived - current.total).toFixed(2)}`} /> : null}</Card>
     {current?.errorMessage ? <Card tone={rejected ? "danger" : "info"}><Text>{current.errorMessage}</Text></Card> : null}
     {rejected ? null : <PrimaryButton label="COMPARTIR COMPROBANTE" onPress={() => navigation.navigate("ShareReceipt")} tone="success" />}
     <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "NewSale" }] })} tone="outline" />
@@ -212,9 +245,9 @@ export function ShareReceiptScreen({ navigation, route }: P<"ShareReceipt">) {
         await Linking.openURL(pack.pdfUrl);
         return;
       }
-      await Share.share({ message: pack.viewUrl });
+      await shareLink(pack.viewUrl, pack.whatsappText.split(": ")[0]);
     } catch (error) {
-      Alert.alert("No pudimos compartir", error instanceof Error ? error.message : "Intenta nuevamente.");
+      showAlert("No pudimos compartir", error instanceof Error ? error.message : "Intenta nuevamente.");
     } finally {
       setBusy(false);
     }

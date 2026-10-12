@@ -59,9 +59,30 @@ export function resolveBillingCredential(config: TenantBillingConfig): string | 
   return sharedSandboxToken(config);
 }
 
+export const TENANT_URL_PREFIX = "BILLING_URL_";
+
+export function tenantUrlEnvName(tenantId: string) {
+  return `${TENANT_URL_PREFIX}${tenantId.replace(/-/g, "").toUpperCase()}`;
+}
+
+/**
+ * Ruta (URL) de la cuenta del proveedor para proveedores con una ruta por
+ * empresa, como Nubefact. También la define operaciones, nunca el negocio:
+ * si el negocio pudiera elegirla, podría enviar el token a un servidor ajeno.
+ */
+export function resolveBillingEndpoint(config: TenantBillingConfig): string | undefined {
+  const own = process.env[tenantUrlEnvName(config.tenantId)]?.trim();
+  if (own) return own;
+  if (config.environment !== "sandbox") return undefined;
+  if ((process.env.BILLING_ALLOW_SHARED_SANDBOX_TOKEN ?? "false").toLowerCase() !== "true") return undefined;
+  return process.env[`${config.providerCode.toUpperCase()}_API_URL`]?.trim() || undefined;
+}
+
 export function hasBillingCredential(config: TenantBillingConfig) {
   try {
-    return Boolean(resolveBillingCredential(config));
+    const credential = resolveBillingCredential(config);
+    if (config.providerCode === "nubefact") return Boolean(credential && resolveBillingEndpoint(config));
+    return Boolean(credential);
   } catch {
     return false;
   }

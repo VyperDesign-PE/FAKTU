@@ -1,8 +1,16 @@
 import type { AuthSession } from "../auth/types";
-import type { BusinessProfile, PendingReceipt, Product } from "../domain/types";
+import type { BusinessProfile, PaymentMethod, PendingReceipt, Product } from "../domain/types";
 import { getAccessToken } from "../storage/session";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:4000";
+import { Platform } from "react-native";
+
+/**
+ * En la web la app la sirve la misma API (mismo dominio), así que basta el
+ * origen actual. En el celular se configura EXPO_PUBLIC_API_URL; el valor por
+ * defecto apunta al emulador de Android en desarrollo.
+ */
+export const API_URL = process.env.EXPO_PUBLIC_API_URL?.trim()
+  || (Platform.OS === "web" && typeof window !== "undefined" ? window.location.origin : "http://10.0.2.2:4000");
 
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
@@ -41,7 +49,7 @@ export async function registerWithEmail(email: string, password: string) {
 }
 
 export async function requestOtp(phone: string) {
-  return json<{ ok: true; devCode?: string }>(await authorizedFetch("/v1/auth/otp/request", {
+  return json<{ ok: true; verificationRequired?: boolean; devCode?: string }>(await authorizedFetch("/v1/auth/otp/request", {
     method: "POST",
     body: JSON.stringify({ phone })
   }));
@@ -173,7 +181,15 @@ export type RemoteReceipt = {
   id: string;
   clientTransactionId: string;
   temporaryNumber: string;
-  documentType: "BOLETA" | "FACTURA";
+  documentType: "BOLETA" | "FACTURA" | "NOTA_CREDITO";
+  paymentMethod?: PaymentMethod;
+  amountReceived?: number;
+  changeAmount?: number;
+  relatedReceiptId?: string;
+  creditNoteReason?: string;
+  /** true cuando una nota de crédito aceptada anuló el comprobante. */
+  voided?: boolean;
+  creditNote?: { id: string; status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR"; officialNumber?: string };
   series: string;
   correlative: number;
   officialNumber?: string;
@@ -193,6 +209,7 @@ export type SubmitReceiptResult = {
   officialNumber?: string;
   status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR";
   message?: string;
+  providerCode?: string;
 };
 
 /**
@@ -325,4 +342,40 @@ export type RucRegistryStatus = {
 
 export async function getRucRegistryStatus() {
   return json<RucRegistryStatus>(await authorizedFetch("/v1/system/ruc-registry/status"));
+}
+
+/**
+ * Anula un comprobante aceptado emitiendo una nota de crédito (motivo 01).
+ * Repetir la llamada devuelve la misma nota de crédito.
+ */
+export async function voidReceipt(receiptId: string, reason: string): Promise<RemoteReceipt> {
+  const response = await authorizedFetch(`/v1/receipts/${encodeURIComponent(receiptId)}/void`, { method: "POST", body: JSON.stringify({ reason }) });
+  const body = await response.json().catch(() => ({})) as Partial<RemoteReceipt> & { message?: string };
+  if (body.status) return body as RemoteReceipt;
+  throw new Error(body.message ?? "No pudimos anular el comprobante.");
+}
+
+export type DailyClose = {
+  date: string;
+  sales: { count: number; total: number };
+  accepted: { count: number; total: number };
+  pending: { count: number; total: number };
+  rejected: { count: number; total: number };
+  creditNotes: { count: number; total: number };
+  netTotal: number;
+  expectedCash: number;
+  byDocumentType: { BOLETA: { count: number; total: number }; FACTURA: { count: number; total: number } };
+  paymentMethods: Array<{ method: PaymentMethod; salesCount: number; sales: number; refunds: number; net: number }>;
+};
+
+export async function getDailyClose(date?: string) {
+  return json<DailyClose>(await authorizedFetch(`/v1/reports/daily-close${date ? `?date=${encodeURIComponent(date)}` : ""}`));
+}
+
+/** Enlace temporal (10 min) para descargar el registro de ventas del mes en CSV. */
+export async function createSalesRegisterLink(month: string) {
+  return json<{ url: string; expiresInSeconds: number }>(await authorizedFetch("/v1/reports/sales-register/link", {
+    method: "POST",
+    body: JSON.stringify({ month })
+  }));
 }

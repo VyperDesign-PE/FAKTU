@@ -12,7 +12,7 @@ import { runMigrations } from "../db/migrations.js";
 import type { BillingService } from "../modules/billing/BillingService.js";
 import type { BillingIssueResult, IssueDocumentCommand } from "../modules/billing/contracts.js";
 import { issueOrReconcileReceipt, processPendingReceipts } from "../modules/receipts/receiptIssuer.js";
-import { applyBillingResult, getReceiptById, prepareReceipt } from "../modules/receipts/receiptRepository.js";
+import { applyBillingResult, getReceiptById, prepareCreditNote, prepareReceipt } from "../modules/receipts/receiptRepository.js";
 
 if (process.env.ALLOW_DB_TESTS !== "true") throw new Error("ALLOW_DB_TESTS=true es obligatorio (la prueba escribe en la base).");
 
@@ -155,6 +155,29 @@ const cases: Array<[string, () => Promise<void>]> = [
     assert.equal(outcome.failed, true);
     assert.equal(outcome.receipt.status, "ERROR");
     assert.equal(outcome.receipt.attemptCount, 1);
+  }],
+
+  ["anulación: una nota de crédito rechazada permite reintentar; la vigente es única", async () => {
+    const tenantId = await createTenant();
+    const sale = await newReceipt(tenantId);
+    await issueOrReconcileReceipt(fakeBilling({}).service, tenantId, sale.id);
+
+    const first = await prepareCreditNote(tenantId, sale.id, "DEVOLUCION");
+    assert.equal(first.receipt.documentType, "NOTA_CREDITO");
+    const rejecting = fakeBilling({ issue: async () => ({ providerCode: "mock", status: "REJECTED", message: "Rechazada por SUNAT" }) });
+    assert.equal((await issueOrReconcileReceipt(rejecting.service, tenantId, first.receipt.id)).receipt.status, "RECHAZADO");
+    assert.equal((await getReceiptById(tenantId, sale.id))?.creditNote?.status, "RECHAZADO");
+
+    const second = await prepareCreditNote(tenantId, sale.id, "DEVOLUCION");
+    assert.notEqual(second.receipt.id, first.receipt.id, "A rejected credit note must not block a new attempt");
+    assert.equal((await issueOrReconcileReceipt(fakeBilling({}).service, tenantId, second.receipt.id)).receipt.status, "ACEPTADO");
+    const voided = await getReceiptById(tenantId, sale.id);
+    assert.equal(voided?.creditNote?.id, second.receipt.id);
+    assert.equal(voided?.creditNote?.status, "ACEPTADO");
+
+    const again = await prepareCreditNote(tenantId, sale.id, "DEVOLUCION");
+    assert.equal(again.receipt.id, second.receipt.id, "An accepted credit note is returned, never duplicated");
+    assert.equal(again.created, false);
   }],
 
   ["el proceso del servidor recupera comprobantes pendientes", async () => {

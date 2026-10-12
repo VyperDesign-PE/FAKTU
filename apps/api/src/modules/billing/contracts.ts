@@ -1,6 +1,24 @@
 export type BillingProviderCode = "mock" | "apisperu" | "nubefact" | "efact" | "senda" | "facturadorpe" | "cpeapi" | "external";
 export type BillingEnvironment = "sandbox" | "production";
-export type BillingDocumentType = "BOLETA" | "FACTURA";
+export type BillingDocumentType = "BOLETA" | "FACTURA" | "NOTA_CREDITO";
+/** Comprobantes de venta que pueden anularse con una nota de crédito. */
+export type SaleDocumentType = Exclude<BillingDocumentType, "NOTA_CREDITO">;
+
+export const PAYMENT_METHODS = ["EFECTIVO", "YAPE", "PLIN", "TARJETA", "TRANSFERENCIA"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** Documento al que hace referencia una nota de crédito. */
+export type RelatedDocument = {
+  documentType: SaleDocumentType;
+  series: string;
+  correlative: number;
+};
+
+/** Motivo SUNAT de la nota de crédito (catálogo 09). FAKTU usa 01 = anulación de la operación. */
+export type CreditNoteReason = {
+  code: "01";
+  description: string;
+};
 
 export type BillingAddress = {
   address?: string;
@@ -46,12 +64,19 @@ export type IssueDocumentCommand = {
   subtotal: number;
   igv: number;
   total: number;
+  paymentMethod?: PaymentMethod;
+  /** Solo para NOTA_CREDITO. */
+  relatedDocument?: RelatedDocument;
+  /** Solo para NOTA_CREDITO. */
+  creditNoteReason?: CreditNoteReason;
 };
 
 export type BillingProviderArtifacts = {
   hash?: string;
   xmlContent?: string;
   cdrZipBase64?: string;
+  /** Cadena SUNAT para el código QR de la representación impresa. */
+  qrData?: string;
   rawResponse?: unknown;
 };
 

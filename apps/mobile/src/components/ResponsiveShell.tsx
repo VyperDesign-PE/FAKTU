@@ -29,7 +29,7 @@ export function ResponsiveShell({ currentRoute, navigation, children, title, sub
       {desktop ? (
         <View style={styles.sidebar}>
           <View style={styles.brandBox}>
-            <View style={styles.brandMark}><Text style={styles.brandMarkText}>CF</Text></View>
+            <View style={styles.brandMark}><Text style={styles.brandMarkText}>F</Text></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.brandTitle}>Comprobantes Fácil</Text>
               <Text style={styles.brandSubtitle}>MVP SaaS Perú</Text>

@@ -50,7 +50,7 @@ function buildContent(receipt: ReceiptRecord, business: BusinessRecord) {
   if (business.ruc) lines.push({ text: `RUC: ${business.ruc}`, size: 9 });
   if (business.address) wrap(business.address).forEach((text) => lines.push({ text, size: 8 }));
   lines.push({ text: "", gap: 8 });
-  lines.push({ text: `${receipt.documentType} ELECTRONICA`, size: 14, bold: true, gap: 16 });
+  lines.push({ text: `${receipt.documentType === "NOTA_CREDITO" ? "NOTA DE CREDITO" : receipt.documentType} ELECTRONICA`, size: 14, bold: true, gap: 16 });
   lines.push({ text: receipt.officialNumber ?? `${receipt.series}-${String(receipt.correlative).padStart(8, "0")}`, size: 13, bold: true, gap: 16 });
   lines.push({ text: `Fecha de emision: ${formatDate(receipt.issueDate)}`, size: 9 });
   lines.push({ text: `Moneda: PEN`, size: 9 });
