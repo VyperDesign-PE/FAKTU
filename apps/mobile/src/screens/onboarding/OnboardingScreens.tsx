@@ -120,19 +120,21 @@ export function ConfirmBusinessScreen({ navigation, route }: P<"ConfirmBusiness"
 /**
  * Activación de la facturación electrónica.
  *
- * FAKTU NUNCA pide la Clave SOL: con un PSE (Nubefact) el negocio registra al
- * proveedor directamente en SUNAT Operaciones en Línea y FAKTU activa su cuenta.
+ * FAKTU NUNCA pide la Clave SOL principal. Para emitir, el negocio crea un
+ * usuario SOL secundario con permiso solo de emisión (lo puede desactivar
+ * cuando quiera) y cuenta con un certificado digital; FAKTU registra la
+ * empresa en su proveedor de facturación y activa la cuenta.
  * Mientras tanto se puede practicar en modo pruebas, sin validez tributaria.
  */
 export function SunatConnectionDataScreen({ navigation }: P<"SunatConnectionData">) {
-  return <Screen title="Facturación electrónica" subtitle="Así activamos tus comprobantes ante SUNAT. Nunca te pediremos tu Clave SOL.">
+  return <Screen title="Facturación electrónica" subtitle="Así activamos tus comprobantes ante SUNAT. Te acompañamos en cada paso.">
     <Card tone="info">
-      <Text style={styles.bullet}>1. Nuestro equipo crea tu cuenta en Nubefact, proveedor autorizado por SUNAT (OSE/PSE).</Text>
-      <Text style={styles.bullet}>2. Tú registras a Nubefact como tu proveedor en SUNAT Operaciones en Línea. Te guiamos paso a paso por WhatsApp.</Text>
-      <Text style={styles.bullet}>3. Activamos tu negocio y te avisamos: desde ese momento tus boletas y facturas son válidas.</Text>
+      <Text style={styles.bullet}>1. Tu certificado digital: si no lo tienes, te ayudamos a obtenerlo.</Text>
+      <Text style={styles.bullet}>2. En SUNAT Operaciones en Línea creas un usuario secundario solo para facturar. Te guiamos por WhatsApp.</Text>
+      <Text style={styles.bullet}>3. Registramos tu negocio en nuestro proveedor de facturación, hacemos una boleta de prueba y te avisamos cuando todo esté activo.</Text>
     </Card>
     <Card tone="warning"><Text style={styles.note}>Mientras se activa, FAKTU funciona en modo pruebas: puedes vender y practicar, pero esos comprobantes no tienen validez tributaria.</Text></Card>
-    <Card><Text style={styles.note}>Ninguna persona de FAKTU te pedirá tu Clave SOL por teléfono, WhatsApp o en esta app.</Text></Card>
+    <Card><Text style={styles.note}>Nunca te pediremos tu Clave SOL principal, ni por teléfono, ni por WhatsApp, ni en esta app. El usuario secundario solo puede emitir comprobantes y tú lo puedes desactivar cuando quieras.</Text></Card>
     <PrimaryButton label="ENTENDIDO, CONTINUAR" onPress={() => navigation.navigate("EnabledDocuments")} tone="success" />
   </Screen>;
 }

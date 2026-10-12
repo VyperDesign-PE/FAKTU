@@ -83,6 +83,15 @@ export class BillingService {
     return provider.getDocumentStatus({ ...command, issuer: command.issuer ?? runtime.issuer });
   }
 
+  /** PDF oficial generado por el proveedor; undefined si no lo ofrece o es práctica. */
+  async documentPdf(command: IssueDocumentCommand): Promise<Buffer | undefined> {
+    if (isPracticeSeries(command.series)) return undefined;
+    const runtime = await runtimeForTenant(command.tenantId);
+    const provider = createBillingProvider(runtime.config, runtime);
+    if (!provider.getDocumentPdf) return undefined;
+    return provider.getDocumentPdf({ ...command, issuer: command.issuer ?? runtime.issuer });
+  }
+
   async health(tenantId: string): Promise<{ providerCode: string; status: Awaited<ReturnType<BillingProvider["health"]>>; message?: string }> {
     const config = await getTenantBillingConfig(tenantId);
     try {

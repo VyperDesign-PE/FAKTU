@@ -2,7 +2,41 @@ import http from "node:http";
 
 const port = Number(process.env.PORT ?? 4100);
 const expectedToken = process.env.MOCK_DOCUMENT_TOKEN ?? "e2e-token";
-const stats = { dni: 0, ruc: 0, nubefactIssued: 0, nubefactQueries: 0 };
+const stats = { dni: 0, ruc: 0, nubefactIssued: 0, nubefactQueries: 0, apisperuIssued: 0, apisperuPdfs: 0 };
+const apisperuToken = process.env.MOCK_APISPERU_TOKEN ?? "e2e-apisperu-token";
+const apisperuDocs = new Map();
+
+/**
+ * Simulador de APIsPERU (OpenAPI oficial): Bearer token de la empresa,
+ * invoice/send y note/send devuelven DocumentResponse; los errores de
+ * validación son una lista { field, message }; invoice/status consulta el CDR.
+ */
+function apisperu(path, body, query) {
+  if (path === "/invoice/status") {
+    const doc = apisperuDocs.get(`${query.get("tipo")}-${query.get("serie")}-${query.get("numero")}`);
+    return doc ? [200, { success: true, cdrZip: "CDR", cdrResponse: doc.cdrResponse }] : [200, { success: false, error: { code: "0127", message: "No existe" } }];
+  }
+  const isPdf = path.endsWith("/pdf");
+  const details = Array.isArray(body.details) ? body.details : [];
+  const sum = (field) => details.reduce((total, item) => total + cents(item[field]), 0);
+  const errors = [];
+  if (!body.company?.ruc) errors.push({ field: "company.ruc", message: "requerido" });
+  if (!details.length) errors.push({ field: "details", message: "requerido" });
+  if (sum("mtoValorVenta") !== cents(body.mtoOperGravadas)) errors.push({ field: "mtoOperGravadas", message: "no coincide con el detalle" });
+  if (sum("igv") !== cents(body.mtoIGV)) errors.push({ field: "mtoIGV", message: "no coincide con el detalle" });
+  if (path.startsWith("/note/") && (!body.tipDocAfectado || !body.numDocfectado || !body.codMotivo)) errors.push({ field: "numDocfectado", message: "requerido" });
+  if (errors.length) return [400, errors];
+  if (isPdf) {
+    stats.apisperuPdfs += 1;
+    return [200, Buffer.from(`%PDF-1.4\n% APISPERU-PDF ${body.serie}-${body.correlativo} QR+HASH\n%%EOF\n`), "application/pdf"];
+  }
+  const key = `${body.tipoDoc}-${body.serie}-${body.correlativo}`;
+  if (apisperuDocs.has(key)) return [200, { xml: "", hash: "", sunatResponse: { success: false, error: { code: "1033", message: "El comprobante fue registrado previamente con otros datos" } } }];
+  stats.apisperuIssued += 1;
+  const cdrResponse = { accepted: true, id: `${body.serie}-${body.correlativo}`, code: "0", description: `El comprobante ${body.serie}-${body.correlativo} ha sido aceptado`, notes: [] };
+  apisperuDocs.set(key, { cdrResponse });
+  return [200, { xml: "<Invoice/>", hash: `hash-${key}`, sunatResponse: { success: true, cdrZip: "CDR", cdrResponse } }];
+}
 const nubefactToken = process.env.MOCK_NUBEFACT_TOKEN ?? "e2e-nubefact-token";
 const nubefactDocs = new Map();
 const cents = (value) => Math.round(Number(value) * 100);
@@ -88,8 +122,27 @@ const server = http.createServer(async (req, res) => {
     stats.ruc = 0;
     stats.nubefactIssued = 0;
     stats.nubefactQueries = 0;
+    stats.apisperuIssued = 0;
+    stats.apisperuPdfs = 0;
     nubefactDocs.clear();
+    apisperuDocs.clear();
     return send(res, 200, { ok: true });
+  }
+
+  if (req.url?.startsWith("/apisperu/")) {
+    if (req.headers.authorization !== `Bearer ${apisperuToken}`) return send(res, 401, { message: "Unauthorized" });
+    const url = new URL(req.url, "http://localhost");
+    try {
+      const body = req.method === "POST" ? await readJson(req) : {};
+      const [status, payload, contentType] = apisperu(url.pathname.replace(/^\/apisperu/, ""), body, url.searchParams);
+      if (contentType) {
+        res.writeHead(status, { "content-type": contentType, "content-length": payload.length });
+        return res.end(payload);
+      }
+      return send(res, status, payload);
+    } catch {
+      return send(res, 400, [{ field: "body", message: "JSON inválido" }]);
+    }
   }
 
   if (req.method === "POST" && req.url === "/nubefact") {

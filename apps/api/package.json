@@ -1,6 +1,6 @@
 {
   "name": "@app/api",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,8 @@
     "test:unit": "tsx src/tests/unit.ts",
     "test:integration": "tsx src/tests/receiptIssuer.integration.ts",
     "test:nubefact": "tsx src/tests/nubefact.ts",
-    "ops:activation": "tsx src/jobs/activationInfo.ts"
+    "ops:activation": "tsx src/jobs/activationInfo.ts",
+    "test:apisperu": "tsx src/tests/apisperu.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

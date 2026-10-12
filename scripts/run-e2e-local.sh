@@ -28,6 +28,7 @@ MOCK_PID=$!
   PUBLIC_APP_BASE_URL="http://127.0.0.1:$API_PORT" PUBLIC_RECEIPT_LINK_SECRET=e2e-public-link-secret \
   DELIVERY_PROVIDER=mock RECEIPT_WORKER_ENABLED=false \
   BILLING_ALLOW_SHARED_SANDBOX_TOKEN=true NUBEFACT_API_URL="http://127.0.0.1:$MOCK_PORT/nubefact" NUBEFACT_API_TOKEN=e2e-nubefact-token \
+  APISPERU_API_BASE_URL="http://127.0.0.1:$MOCK_PORT/apisperu/" APISPERU_API_TOKEN=e2e-apisperu-token \
   exec ../../node_modules/.bin/tsx src/server.ts
 ) > "$LOG_DIR/api.log" 2>&1 &
 API_PID=$!

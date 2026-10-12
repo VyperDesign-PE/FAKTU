@@ -16,7 +16,7 @@ import { BillingService } from "./modules/billing/BillingService.js";
 import { lookupCustomerDocument } from "./modules/customerLookup/customerLookupService.js";
 import { CustomerDocumentLookupError } from "./modules/customerLookup/types.js";
 import { lookupRucFromSources } from "./modules/customerLookup/rucLookupService.js";
-import { getSunatRucRegistryStatus } from "./modules/sunatRuc/sunatRucRegistryRepository.js";
+import { findSunatRuc, getSunatRucRegistryStatus } from "./modules/sunatRuc/sunatRucRegistryRepository.js";
 import { getCustomerById, searchCustomers, upsertCustomer } from "./modules/customers/customerRepository.js";
 import { getMonthlyLookupSummary } from "./modules/customers/documentLookupUsageRepository.js";
 import { listProducts, upsertProduct } from "./modules/products/productRepository.js";
@@ -192,8 +192,16 @@ app.patch("/v1/business", { preHandler: requireAuth }, async (request, reply) =>
     onboardingComplete: z.boolean().optional()
   }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ message: "Revisa los datos del negocio." });
+  // El comprobante necesita la dirección fiscal y el ubigeo del emisor: si no
+  // vienen, se toman del padrón SUNAT local.
+  const data = { ...parsed.data };
+  if (data.ruc && (!data.ubigeo || !data.address)) {
+    const official = await findSunatRuc(data.ruc).catch(() => null);
+    if (official?.ubigeo && !data.ubigeo && /^\d{6}$/.test(official.ubigeo)) data.ubigeo = official.ubigeo;
+    if (official?.fiscalAddress && !data.address && official.fiscalAddress.trim() !== "-") data.address = official.fiscalAddress;
+  }
   try {
-    return await updateBusiness(claims(request).tenantId, parsed.data);
+    return await updateBusiness(claims(request).tenantId, data);
   } catch (error) {
     if ((error as { code?: string }).code === "23505") {
       // Un RUC solo puede pertenecer a un negocio en FAKTU.
@@ -507,8 +515,21 @@ app.get("/r/pdf", { config: publicRateLimit }, async (request, reply) => {
     const token = verifyReceiptLinkToken(parsed.data.t, "PDF");
     const [receipt, business] = await Promise.all([getReceiptById(token.tenantId, token.receiptId), getBusiness(token.tenantId)]);
     if (!receipt || !business) return reply.code(404).send("Comprobante no encontrado");
-    // Con un proveedor real se entrega la representación impresa oficial.
+    // Con un proveedor real se entrega la representación impresa oficial:
+    // enlace alojado (Nubefact) o PDF generado bajo demanda (APIsPERU).
     if (receipt.pdfUrl?.startsWith("https://")) return reply.redirect(receipt.pdfUrl);
+    if (receipt.status === "ACEPTADO" && receipt.providerCode && receipt.providerCode !== "mock") {
+      try {
+        const official = await billingService.documentPdf(await buildBillingCommand(receipt));
+        if (official) {
+          return reply.header("Content-Type", "application/pdf")
+            .header("Content-Disposition", `inline; filename="${receipt.officialNumber ?? "comprobante"}.pdf"`)
+            .send(official);
+        }
+      } catch (error) {
+        request.log.warn({ error, receiptId: receipt.id }, "official PDF unavailable; using internal PDF");
+      }
+    }
     const pdf = renderReceiptPdf(receipt, business);
     return reply.header("Content-Type", "application/pdf").header("Content-Disposition", `inline; filename="${receipt.officialNumber ?? "comprobante"}.pdf"`).send(pdf);
   } catch (error) {
@@ -549,8 +570,8 @@ app.post("/v1/deliveries/process-pending", { preHandler: requireAuth }, async (r
 
 const providerCatalog = [
   { code: "mock", name: "Simulador", note: "Solo pruebas. No emite a SUNAT." },
-  { code: "apisperu", name: "APIsPERU", note: "Adaptador nativo disponible para sandbox. Producción requiere credenciales y validación final." },
-  { code: "nubefact", name: "NubeFact", note: "Adaptador nativo pendiente de homologación." },
+  { code: "apisperu", name: "APIsPERU", note: "Proveedor del piloto. Requiere certificado digital y usuario SOL secundario del negocio." },
+  { code: "nubefact", name: "Nubefact", note: "OSE/PSE con certificado incluido. Alternativa para escalar (plan revendedor)." },
   { code: "efact", name: "Efact", note: "Adaptador nativo pendiente de homologación." },
   { code: "senda", name: "Senda", note: "Adaptador nativo pendiente de homologación." }
 ] as const;

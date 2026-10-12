@@ -4,20 +4,25 @@ Decisiones de producto, cómo activar a cada negocio y qué revisar antes de pas
 
 ## 1. Decisiones
 
-### Proveedor de facturación: Nubefact
+### Proveedor de facturación: APIsPERU para el piloto, Nubefact para escalar
 
-| Criterio | Nubefact | APIsPERU |
-|---|---|---|
-| Autorización SUNAT | OSE y PSE | Servicio API (el negocio firma) |
-| Certificado digital del negocio | No lo necesita: Nubefact firma como PSE (confirmar con Nubefact al contratar) | Sí, más usuario secundario SOL |
-| Cuenta de prueba | Demo gratuita, de inmediato | Empresa beta |
-| Modelo para SaaS | Programa reseller: cuenta por negocio, PDF/XML/CDR alojados | Token por empresa |
-| PDF oficial (QR + hash) | Lo genera Nubefact | Hay que generarlo |
-| Documentación | Manual JSON público y completo | Limitada |
+Comparación con precios publicados (confirmar antes de contratar):
 
-Para un bodeguero, no tener que comprar un certificado digital ni crear usuarios secundarios SOL es la diferencia entre activarse en una tarde o no activarse. FAKTU implementa Nubefact como adaptador nativo (`NubefactBillingProvider`) según el manual oficial. APIsPERU se mantiene como alternativa.
+| | APIsPERU | Nubefact (TXT-JSON) | Nubefact revendedor |
+|---|---|---|---|
+| Por negocio al mes | S/ 25 + IGV, ilimitado (plan gratis: 200 comprobantes) | S/ 70 con IGV (500 comprobantes) | ~S/ 40 (cotizar) |
+| Pago inicial | S/ 0 | S/ 0 | ~S/ 1,000 |
+| Certificado digital | Lo aporta el negocio | Incluido | Incluido (confirmar) |
+| Usuario SOL secundario | Sí, del negocio | No | No |
+| PDF oficial | `POST /invoice/pdf` (FAKTU lo sirve en el enlace compartido) | Enlace alojado | Enlace alojado |
 
-Costo de referencia (página reseller de Nubefact, confirmar con ventas@nubefact.com): S/ 1,000 pago único por la cuenta revendedor y S/ 40 por empresa activa al mes, que incluye 500 comprobantes.
+**Piloto: APIsPERU.** No hay pago inicial, el plan gratis sirve para las pruebas y el costo por negocio es el más bajo. A cambio, cada negocio necesita certificado digital y un usuario SOL secundario.
+
+**Nubefact queda listo como alternativa.** El adaptador existe y está probado. Conviene pasar a Nubefact si el certificado o el usuario secundario resultan un obstáculo en el piloto, o al superar unos 30 negocios con el plan revendedor.
+
+**El plan "Integración TXT-JSON" de Nubefact a S/ 70 no sirve para revender:** cuesta lo mismo que "Nubefact Online", que es la competencia directa.
+
+Ambos adaptadores siguen la documentación oficial: OpenAPI de APIsPERU en `https://facturacion.apisperu.com/doc/swagger` y manual JSON de Nubefact. Por ahora solo se probaron contra simuladores; falta la primera emisión real en beta.
 
 ### Web primero (PWA), Android después, con el mismo código
 
@@ -49,22 +54,37 @@ Un negocio sin facturación activa usa el simulador con series propias (`TB01`, 
 
 FAKTU **nunca pide la Clave SOL**. La pantalla de activación lo dice explícitamente.
 
-## 3. Activar a un negocio en Nubefact
+## 3. Activar a un negocio
 
-1. Crear la cuenta del negocio en Nubefact (reseller) y las series `B001`, `F001`, `BC01` y `FC01`. Si usas otras series, cámbialas en `DEFAULT_*_SERIES`.
-2. Guiar al negocio para que registre a Nubefact como su PSE en SUNAT Operaciones en Línea.
-3. Obtener la ruta y el token de esa cuenta (opción API / Integración).
-4. Ejecutar `npm run ops:activation -- correo@negocio.pe`. El script indica:
-   - las variables `BILLING_URL_<tenant>` y `BILLING_TOKEN_<tenant>` que hay que definir en el gestor de secretos;
-   - el `update` SQL que cambia el negocio a `nubefact`.
-5. Reiniciar la API. En la app: Configuración → Facturación → probar conexión.
-6. Emitir una boleta de prueba en `sandbox` y revisarla en el panel de Nubefact.
+Ejecuta `npm run ops:activation -- correo@negocio.pe apisperu` (o `nubefact`). El script indica los pasos, la variable de secreto exacta y si faltan datos del emisor: RUC, razón social, dirección fiscal y ubigeo. La dirección y el ubigeo se completan solos desde el padrón SUNAT cuando el RUC está ahí.
 
-El negocio no puede elegir ni ver la ruta ni el token: si pudiera elegir la ruta, podría enviar el token a un servidor ajeno.
+### APIsPERU (piloto)
 
-## 4. Homologación con Nubefact (antes de producción)
+1. **Certificado digital del negocio.** Para las pruebas en beta, APIsPERU genera uno de prueba (`POST /companies/certificate/free`). Para producción se necesita uno real del negocio.
+2. **Usuario SOL secundario.** El negocio lo crea en SUNAT Operaciones en Línea con permiso **solo de emisión electrónica**.
+   - FAKTU nunca pide la Clave SOL principal.
+   - El usuario secundario se ingresa directamente en APIsPERU, no se guarda en FAKTU, y el negocio puede desactivarlo cuando quiera.
+3. **Registrar la empresa** en el panel de APIsPERU con entorno `beta`. Copiar el token de esa empresa a `BILLING_TOKEN_<tenant>` en el gestor de secretos del servidor.
+4. **Cambiar el negocio a `apisperu` / `sandbox`** con el `update` que imprime el script. Reiniciar la API.
+5. **En la app:** probar conexión, emitir una boleta de S/ 1, compartirla (debe abrir el PDF oficial con QR) y anularla.
+6. **Producción:**
+   - pasar la empresa a `produccion` en APIsPERU;
+   - definir `BILLING_PRODUCTION_ENABLED=true`;
+   - cambiar el negocio a `environment = 'production'`.
 
-Nubefact pide emitir desde el sistema un conjunto de documentos. Para el alcance de FAKTU (ventas gravadas en soles), corresponden:
+**Manejo seguro de credenciales:** el certificado y la clave del usuario secundario solo los recibe la persona de operaciones que registra la empresa. Se entregan por un canal seguro, nunca por un grupo de chat, y se borran de ese canal una vez registrados.
+
+### Nubefact (alternativa)
+
+1. Crear la cuenta del negocio con las series `B001`, `F001`, `BC01` y `FC01`.
+2. Definir `BILLING_URL_<tenant>` y `BILLING_TOKEN_<tenant>`.
+3. Cambiar el negocio a `nubefact` con el `update` del script.
+
+El negocio no puede elegir ni ver la ruta ni el token.
+
+## 4. Pruebas en beta antes de producción
+
+Con APIsPERU en `beta` (y en la homologación de Nubefact si se usa), emitir y verificar:
 
 - [ ] Boleta en soles + consulta de estado
 - [ ] Factura en soles + consulta de estado

@@ -1,10 +1,10 @@
 # FAKTU
 
-Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App web/móvil (React Native + Expo, PWA), API (Fastify + PostgreSQL) y facturación electrónica con Nubefact (OSE/PSE) mediante un adaptador desacoplado.
+Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App web/móvil (React Native + Expo, PWA), API (Fastify + PostgreSQL) y facturación electrónica con APIsPERU o Nubefact mediante adaptadores desacoplados.
 
-## Versión actual: 0.14.0 — lista para el piloto
+## Versión actual: 0.15.0 — lista para el piloto
 
-- **Proveedor:** Nubefact (OSE/PSE), con adaptador nativo. APIsPERU queda como alternativa.
+- **Proveedor:** APIsPERU para el piloto (sin pago inicial, S/ 25 por negocio). Nubefact (OSE/PSE) queda listo como alternativa para escalar.
 - **Plataforma:** app web instalable (PWA), servida por la misma API. La app Android sale del mismo código cuando el piloto lo valide.
 - **Funciones:** venta con Yape, Plin, efectivo (con vuelto), tarjeta o transferencia; anulación con nota de crédito; cierre de caja; registro de ventas para el contador; modo práctica aislado.
 - **Operación del piloto:** ver **`docs/PILOTO.md`** (decisiones, activación de negocios, homologación, despliegue y riesgos).

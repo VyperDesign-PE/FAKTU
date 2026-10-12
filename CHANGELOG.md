@@ -1,3 +1,22 @@
+# 0.15.0 - APIsPERU como proveedor del piloto
+
+- Adaptador APIsPERU verificado contra su OpenAPI oficial (`/doc/swagger`):
+  - las notas de crédito ya no envían `tipoOperacion`;
+  - los errores de validación (lista `field`/`message`) se muestran con su detalle.
+- Clasificación de respuestas SUNAT por rangos oficiales:
+  - errores 0100–0999, como la intermitencia de SUNAT, y fallas HTTP quedan **pendientes** y se concilian (antes se marcaban como rechazados);
+  - 1000–3999 son rechazo;
+  - 1033 se concilia;
+  - un CDR aceptado con observaciones (4xxx) cuenta como aceptado.
+- PDF oficial de APIsPERU (`invoice/pdf`, `note/pdf`, con QR y hash): el enlace compartido lo entrega en lugar del PDF interno.
+- La dirección fiscal y el ubigeo del emisor se completan desde el padrón SUNAT al registrar el RUC.
+- `npm run ops:activation -- correo [apisperu|nubefact]`: pasos por proveedor y aviso de datos del emisor faltantes.
+- La pantalla de activación explica qué se necesita (certificado y usuario SOL secundario solo para facturar); nunca se pide la Clave SOL principal.
+- Pruebas:
+  - 15 pruebas del adaptador APIsPERU;
+  - simulador APIsPERU por HTTP en el E2E (boleta, PDF oficial y nota de crédito, cada uno emitido exactamente una vez).
+- `docs/PILOTO.md` actualizado con la decisión de proveedor y la activación de negocios.
+
 # 0.14.0 - Listo para el piloto: Nubefact, web y funciones de caja
 
 **Facturación**

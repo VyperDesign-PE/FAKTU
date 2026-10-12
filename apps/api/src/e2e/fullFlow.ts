@@ -453,7 +453,59 @@ async function main() {
   assert.match(Buffer.from(pdfBytes).toString("latin1"), /ENTORNO DE PRUEBA/, "Practice PDF must say it has no tax validity");
   assert.match(await (await fetch(practiceShare.viewUrl)).text(), /SIN VALIDEZ TRIBUTARIA/);
 
-  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact -> practice mode -> rate limit");
+  log("APIsPERU: full flow for a third business (pilot provider)");
+  const ownerC = await register(`owner-c-${suffix}@example.test`);
+  const tokenC = ownerC.accessToken;
+  await request("/v1/business", {
+    method: "PATCH",
+    body: JSON.stringify({
+      ruc: `20${String(Date.now() + 7).slice(-9)}`,
+      businessName: "LIBRERIA APISPERU E2E",
+      address: "AV. E2E 456",
+      ubigeo: "150101",
+      department: "LIMA",
+      province: "LIMA",
+      district: "LIMA",
+      onboardingComplete: true
+    })
+  }, tokenC);
+  const apisperuSettings = await request<{ providerCode: string; credentialConfigured: boolean }>("/v1/billing/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ providerCode: "apisperu", environment: "sandbox" })
+  }, tokenC);
+  assert.equal(apisperuSettings.credentialConfigured, true);
+  assert.equal((await request<{ ok: boolean }>("/v1/billing/test-connection", { method: "POST" }, tokenC)).ok, true);
+
+  const apisperuSale = await request<{ id: string; status: string; officialNumber: string; providerCode: string }>("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-apisperu-${suffix}`,
+      temporaryNumber: "VT-E2E-APISPERU",
+      documentType: "BOLETA",
+      total: 12,
+      paymentMethod: "PLIN",
+      items: [{ id: "c1", name: "CUADERNO", quantity: 2, unitPrice: 3.5 }, { id: "c2", name: "LAPICERO", quantity: 1, unitPrice: 5 }]
+    })
+  }, tokenC);
+  assert.equal(apisperuSale.status, "ACCEPTED");
+  assert.equal(apisperuSale.providerCode, "apisperu");
+  assert.equal(apisperuSale.officialNumber, "B001-1");
+
+  const apisperuShare = await request<{ pdfUrl: string }>(`/v1/receipts/${apisperuSale.id}/share`, { method: "POST" }, tokenC);
+  const officialPdf = await fetch(apisperuShare.pdfUrl.replace(/^https?:\/\/[^/]+/, apiBase));
+  assert.equal(officialPdf.status, 200);
+  assert.match(Buffer.from(await officialPdf.arrayBuffer()).toString("latin1"), /APISPERU-PDF B001-1 QR\+HASH/, "Shared PDF must be the official APIsPERU representation");
+
+  const apisperuNote = await request<{ status: string; officialNumber: string }>(
+    `/v1/receipts/${apisperuSale.id}/void`, { method: "POST", body: JSON.stringify({ reason: "Error en el precio" }) }, tokenC
+  );
+  assert.equal(apisperuNote.status, "ACCEPTED");
+  assert.equal(apisperuNote.officialNumber, "BC01-1");
+  const apisperuStats = await (await fetch(`${mockDocumentsBase}/stats`)).json() as { apisperuIssued: number; apisperuPdfs: number };
+  assert.equal(apisperuStats.apisperuIssued, 2, "Boleta and credit note must reach APIsPERU exactly once");
+  assert.equal(apisperuStats.apisperuPdfs, 1);
+
+  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact -> APIsPERU -> practice mode -> rate limit");
 }
 
 main()

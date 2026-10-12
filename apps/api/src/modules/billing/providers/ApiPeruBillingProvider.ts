@@ -135,7 +135,8 @@ export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: Billi
 
   return {
     ublVersion: "2.1",
-    tipoOperacion: "0101",
+    // tipoOperacion (catálogo 51) solo existe en facturas y boletas, no en notas.
+    ...(command.documentType === "NOTA_CREDITO" ? {} : { tipoOperacion: "0101" }),
     tipoDoc: SUNAT_DOC_TYPE[command.documentType],
     serie: command.series,
     correlativo: String(command.correlative),
@@ -174,14 +175,43 @@ export function isAlreadyRegisteredResponse(payload: ApiPeruSendResponse) {
   return /registrado previamente/i.test(text);
 }
 
-function messageFromResponse(payload: ApiPeruSendResponse | ApiPeruStatusResponse, fallback: string) {
+type ValidationError = { field?: string; message?: string };
+
+function messageFromResponse(payload: ApiPeruSendResponse | ApiPeruStatusResponse | ValidationError[], fallback: string) {
+  // Errores de validación (HTTP 400): lista de { field, message } según el OpenAPI oficial.
+  if (Array.isArray(payload)) {
+    const text = payload.map((item) => [item.field, item.message].filter(Boolean).join(": ")).filter(Boolean).join(" · ");
+    return text ? `Datos rechazados por APIsPERU: ${text}` : fallback;
+  }
   const cdr = "cdrResponse" in payload
     ? payload.cdrResponse
     : "sunatResponse" in payload
       ? payload.sunatResponse?.cdrResponse
       : undefined;
   const error = payload.error ?? ("sunatResponse" in payload ? payload.sunatResponse?.error : undefined);
-  return cdr?.description || error?.message || ("message" in payload ? payload.message : undefined) || fallback;
+  const base = cdr?.description || error?.message || ("message" in payload ? payload.message : undefined) || fallback;
+  const code = cdr?.code && cdr.code !== "0" ? cdr.code : error?.code;
+  return code && !base.includes(String(code)) ? `${base} (código SUNAT ${code})` : base;
+}
+
+/**
+ * Clasifica la respuesta de SUNAT (BillResult / StatusResult) según los rangos
+ * oficiales de códigos:
+ * - CDR aceptado (código 0 o 4000+ con observaciones) → ACEPTADO.
+ * - CDR no aceptado, o error 1000-3999 (datos inválidos / rechazo) → RECHAZADO.
+ * - 1033 (registrado previamente), 0100-0999 (excepciones del servicio SUNAT,
+ *   p. ej. intermitencia), errores HTTP o sin CDR todavía → PENDIENTE: se
+ *   concilia por estado, nunca se marca como rechazo ni se reemite a ciegas.
+ */
+export function classifySunatResult(result?: ApiPeruSunatResponse | ApiPeruStatusResponse): "ACCEPTED" | "REJECTED" | "PENDING" {
+  const cdr = result?.cdrResponse;
+  if (cdr?.accepted === true) return "ACCEPTED";
+  if (cdr?.accepted === false) return "REJECTED";
+  const rawCode = String(result?.error?.code ?? "").trim();
+  if (!result?.error || rawCode === "1033") return "PENDING";
+  const code = Number(rawCode);
+  if (/^\d+$/.test(rawCode) && code >= 1000 && code < 4000) return "REJECTED";
+  return "PENDING";
 }
 
 export class ApiPeruBillingProvider implements BillingProvider {
@@ -236,7 +266,17 @@ export class ApiPeruBillingProvider implements BillingProvider {
       };
     }
 
-    const payload = await response.json().catch(() => ({})) as ApiPeruSendResponse;
+    const raw = await response.json().catch(() => ({})) as ApiPeruSendResponse | ValidationError[];
+    if (Array.isArray(raw)) {
+      // Validación de APIsPERU: el documento no llegó a SUNAT.
+      return {
+        providerCode: this.code,
+        status: "REJECTED",
+        message: messageFromResponse(raw, `APIsPERU respondió HTTP ${response.status}`),
+        artifacts: { rawResponse: raw }
+      };
+    }
+    const payload = raw;
     if (response.status === 401 || response.status === 403) {
       throw new Error("APIsPERU rechazo la credencial del negocio. Revisa el token configurado.");
     }
@@ -269,11 +309,11 @@ export class ApiPeruBillingProvider implements BillingProvider {
 
     const sunat = payload.sunatResponse;
     const cdr = sunat?.cdrResponse;
-    const accepted = sunat?.success === true && cdr?.accepted === true;
-    const rejected = sunat?.success === false || cdr?.accepted === false;
+    const status = classifySunatResult(sunat);
+    const accepted = status === "ACCEPTED";
     return {
       providerCode: this.code,
-      status: accepted ? "ACCEPTED" : rejected ? "REJECTED" : "PENDING",
+      status,
       officialNumber: cdr?.id || `${command.series}-${command.correlative}`,
       providerDocumentId: cdr?.id,
       message: messageFromResponse(payload, accepted ? "Comprobante aceptado por SUNAT." : "Comprobante enviado; respuesta pendiente de confirmacion."),
@@ -303,11 +343,13 @@ export class ApiPeruBillingProvider implements BillingProvider {
         return { providerCode: this.code, status: "PENDING", officialNumber: `${command.series}-${command.correlative}`, message: messageFromResponse(payload, `No pudimos confirmar el estado (HTTP ${response.status}).`) };
       }
       const cdr = payload.cdrResponse;
-      const accepted = payload.success === true && cdr?.accepted === true;
-      const rejected = payload.success === false || cdr?.accepted === false;
+      // En la consulta, un error sin CDR significa "aún no hay respuesta": solo
+      // un CDR explícito decide aceptado o rechazado.
+      const status = cdr ? classifySunatResult(payload) : "PENDING";
+      const accepted = status === "ACCEPTED";
       return {
         providerCode: this.code,
-        status: accepted ? "ACCEPTED" : rejected ? "REJECTED" : "PENDING",
+        status,
         officialNumber: cdr?.id || `${command.series}-${command.correlative}`,
         providerDocumentId: cdr?.id,
         message: messageFromResponse(payload, accepted ? "Comprobante aceptado por SUNAT." : "Estado pendiente."),
@@ -321,6 +363,25 @@ export class ApiPeruBillingProvider implements BillingProvider {
         message: error instanceof Error ? `No pudimos confirmar el estado: ${error.message}` : "No pudimos confirmar el estado."
       };
     }
+  }
+
+  /**
+   * Representación impresa oficial (con QR y hash) generada por APIsPERU
+   * a partir del mismo JSON del comprobante: POST invoice/pdf o note/pdf.
+   */
+  async getDocumentPdf(command: IssueDocumentCommand): Promise<Buffer> {
+    const body = mapCommandToApiPeru(command, this.options.issuer);
+    const path = command.documentType === "NOTA_CREDITO" ? "note/pdf" : "invoice/pdf";
+    const response = await this.request(new URL(path, this.baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/pdf" },
+      body: JSON.stringify(body)
+    });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!response.ok || bytes.subarray(0, 4).toString("ascii") !== "%PDF") {
+      throw new Error(`APIsPERU no generó el PDF (HTTP ${response.status}).`);
+    }
+    return bytes;
   }
 
   private async request(url: URL, init: RequestInit) {

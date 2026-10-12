@@ -49,6 +49,8 @@ services:
       BILLING_ALLOW_SHARED_SANDBOX_TOKEN: "true"
       NUBEFACT_API_URL: http://mock-document-api:4100/nubefact
       NUBEFACT_API_TOKEN: e2e-nubefact-token
+      APISPERU_API_BASE_URL: http://mock-document-api:4100/apisperu/
+      APISPERU_API_TOKEN: e2e-apisperu-token
     depends_on:
       postgres:
         condition: service_healthy
