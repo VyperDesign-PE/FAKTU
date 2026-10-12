@@ -5,7 +5,7 @@ import { isAllowedSecretRef, resolveBillingCredential, tenantSecretEnvName } fro
 import { assertIssuingAllowed, BillingConfigError } from "../modules/billing/BillingService.js";
 import { isAlreadyRegisteredResponse, mapCommandToApiPeru } from "../modules/billing/providers/ApiPeruBillingProvider.js";
 import type { BillingIssuer, IssueDocumentCommand, TenantBillingConfig } from "../modules/billing/contracts.js";
-import { isPracticeSeries, PRACTICE_SERIES } from "../modules/billing/practiceMode.js";
+import { PRACTICE_SERIES } from "../modules/billing/practiceMode.js";
 
 const tests: Array<[string, () => void]> = [];
 const test = (name: string, fn: () => void) => tests.push([name, fn]);
@@ -130,11 +130,10 @@ test("producción: el modo práctica se puede desactivar y la emisión real exig
 });
 
 // ---------- Modo práctica ----------
-test("las series de práctica empiezan con T y no chocan con las reales", () => {
-  assert.ok(isPracticeSeries(PRACTICE_SERIES.BOLETA));
-  assert.ok(isPracticeSeries(PRACTICE_SERIES.FACTURA));
-  assert.ok(isPracticeSeries(PRACTICE_SERIES.NOTA_CREDITO));
-  for (const real of ["B001", "F001", "BC01", "FC01", "BBB1", "FFF1"]) assert.ok(!isPracticeSeries(real));
+test("las series de práctica no chocan con las reales", () => {
+  const real = ["B001", "F001", "BC01", "FC01", "BD01", "FD01", "T001", "V001", "BBB1", "FFF1", "TTT1", "VVV1"];
+  for (const series of Object.values(PRACTICE_SERIES)) assert.ok(!real.includes(series), series);
+  assert.equal(new Set(Object.values(PRACTICE_SERIES)).size, Object.values(PRACTICE_SERIES).length);
 });
 
 // ---------- Adaptador APIsPERU ----------

@@ -18,7 +18,8 @@ export type ReceiptSharePackage = {
 export const DOCUMENT_LABEL: Record<BillingDocumentType, string> = {
   BOLETA: "boleta electrónica",
   FACTURA: "factura electrónica",
-  NOTA_CREDITO: "nota de crédito electrónica"
+  NOTA_CREDITO: "nota de crédito electrónica",
+  NOTA_DEBITO: "nota de débito electrónica"
 };
 
 function businessName(business: BusinessRecord) {

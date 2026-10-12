@@ -1,8 +1,15 @@
-import type { BillingIssuer, BillingIssueResult, IssueDocumentCommand } from "./contracts.js";
+import type {
+  BillingIssuer,
+  BillingIssueResult,
+  DespatchCommand,
+  DespatchResult,
+  IssueDocumentCommand,
+  VoidingCommand,
+  VoidingResult
+} from "./contracts.js";
 import type { BillingProvider } from "./BillingProvider.js";
 import { createBillingProvider } from "./providerFactory.js";
 import { MockBillingProvider } from "./providers/MockBillingProvider.js";
-import { isPracticeSeries } from "./practiceMode.js";
 import { getTenantBillingConfig } from "./tenantBillingConfigRepository.js";
 import { resolveBillingCredential, resolveBillingEndpoint } from "./secretResolver.js";
 import { getBusiness } from "../tenants/tenantRepository.js";
@@ -59,7 +66,7 @@ export class BillingService {
   async issueDocument(command: IssueDocumentCommand): Promise<BillingIssueResult> {
     // Una venta de práctica jamás llega a un proveedor real, aunque el negocio
     // se haya activado mientras estaba pendiente.
-    if (isPracticeSeries(command.series)) return new MockBillingProvider().issueDocument(command);
+    if (command.practice) return new MockBillingProvider().issueDocument(command);
     const runtime = await runtimeForTenant(command.tenantId);
     assertIssuingAllowed(runtime.config);
     const provider = createBillingProvider(runtime.config, runtime);
@@ -67,7 +74,7 @@ export class BillingService {
   }
 
   async reconcileDocument(command: IssueDocumentCommand): Promise<BillingIssueResult> {
-    if (isPracticeSeries(command.series)) {
+    if (command.practice) {
       return { providerCode: "mock", status: "PENDING", officialNumber: `${command.series}-${command.correlative}`, message: "Venta de práctica pendiente." };
     }
     const runtime = await runtimeForTenant(command.tenantId);
@@ -83,9 +90,49 @@ export class BillingService {
     return provider.getDocumentStatus({ ...command, issuer: command.issuer ?? runtime.issuer });
   }
 
+  /** Proveedor para documentos asíncronos (bajas, guías): simulador si es práctica. */
+  private async asyncProvider(tenantId: string, practice: boolean | undefined) {
+    if (practice) return { provider: new MockBillingProvider() as BillingProvider, issuer: undefined as BillingIssuer | undefined };
+    const runtime = await runtimeForTenant(tenantId);
+    assertIssuingAllowed(runtime.config);
+    return { provider: createBillingProvider(runtime.config, runtime), issuer: runtime.issuer };
+  }
+
+  async requestVoiding(command: VoidingCommand): Promise<VoidingResult> {
+    const { provider, issuer } = await this.asyncProvider(command.tenantId, command.practice);
+    if (!provider.requestVoiding) throw new BillingConfigError(`El proveedor ${provider.code} no permite comunicaciones de baja desde FAKTU.`);
+    return provider.requestVoiding({ ...command, issuer: command.issuer ?? issuer });
+  }
+
+  async voidingStatus(command: VoidingCommand, ticket?: string): Promise<VoidingResult> {
+    const { provider, issuer } = await this.asyncProvider(command.tenantId, command.practice);
+    if (!provider.getVoidingStatus) return { providerCode: provider.code, status: "PENDING", ticket, message: "Este proveedor no permite consultar bajas." };
+    return provider.getVoidingStatus({ ...command, issuer: command.issuer ?? issuer }, ticket);
+  }
+
+  async issueDespatch(command: DespatchCommand): Promise<DespatchResult> {
+    const { provider, issuer } = await this.asyncProvider(command.tenantId, command.practice);
+    if (!provider.issueDespatch) throw new BillingConfigError(`El proveedor ${provider.code} no permite guías de remisión desde FAKTU.`);
+    return provider.issueDespatch({ ...command, issuer: command.issuer ?? issuer });
+  }
+
+  async despatchStatus(command: DespatchCommand, ticket?: string): Promise<DespatchResult> {
+    const { provider, issuer } = await this.asyncProvider(command.tenantId, command.practice);
+    if (!provider.getDespatchStatus) return { providerCode: provider.code, status: "PENDING", ticket, message: "Este proveedor no permite consultar guías." };
+    return provider.getDespatchStatus({ ...command, issuer: command.issuer ?? issuer }, ticket);
+  }
+
+  async despatchPdf(command: DespatchCommand): Promise<Buffer | undefined> {
+    if (command.practice) return undefined;
+    const runtime = await runtimeForTenant(command.tenantId);
+    const provider = createBillingProvider(runtime.config, runtime);
+    if (!provider.getDespatchPdf) return undefined;
+    return provider.getDespatchPdf({ ...command, issuer: command.issuer ?? runtime.issuer });
+  }
+
   /** PDF oficial generado por el proveedor; undefined si no lo ofrece o es práctica. */
   async documentPdf(command: IssueDocumentCommand): Promise<Buffer | undefined> {
-    if (isPracticeSeries(command.series)) return undefined;
+    if (command.practice) return undefined;
     const runtime = await runtimeForTenant(command.tenantId);
     const provider = createBillingProvider(runtime.config, runtime);
     if (!provider.getDocumentPdf) return undefined;

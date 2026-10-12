@@ -3,8 +3,8 @@
  * (https://facturacion.apisperu.com/doc/swagger), con fetch simulado.
  */
 import assert from "node:assert/strict";
-import { ApiPeruBillingProvider, classifySunatResult, mapCommandToApiPeru } from "../modules/billing/providers/ApiPeruBillingProvider.js";
-import type { BillingIssuer, IssueDocumentCommand } from "../modules/billing/contracts.js";
+import { ApiPeruBillingProvider, classifySunatResult, mapCommandToApiPeru, mapDespatchToApiPeru, mapVoidingToApiPeru } from "../modules/billing/providers/ApiPeruBillingProvider.js";
+import type { BillingIssuer, DespatchCommand, IssueDocumentCommand, VoidingCommand } from "../modules/billing/contracts.js";
 
 const issuer: BillingIssuer = {
   ruc: "20601234567",
@@ -36,7 +36,7 @@ const creditNote: IssueDocumentCommand = {
   series: "BC01",
   correlative: 1,
   relatedDocument: { documentType: "BOLETA", series: "B001", correlative: 7 },
-  creditNoteReason: { code: "01", description: "ANULACION DE LA OPERACION" }
+  noteReason: { code: "01", description: "ANULACION DE LA OPERACION" }
 };
 
 type Reply = { status: number; json?: unknown; bytes?: Uint8Array; contentType?: string };
@@ -166,6 +166,112 @@ const tests: Array<[string, () => Promise<void>]> = [
     assert.equal(classifySunatResult({ cdrResponse: { accepted: false, code: "2800" } }), "REJECTED");
   }]
 ];
+
+const facturaVoiding: VoidingCommand = {
+  tenantId: "t-1", voidingId: "v-1", kind: "COMUNICACION_BAJA", correlative: 7, reason: "Error en cálculos",
+  communicationDate: "2026-10-14T15:00:00.000Z",
+  document: { documentType: "FACTURA", series: "F001", correlative: 25, issueDate: "2026-10-12T15:00:00.000Z", subtotal: 100, igv: 18, total: 118 }
+};
+const boletaVoiding: VoidingCommand = {
+  ...facturaVoiding, kind: "RESUMEN_BAJA",
+  document: { documentType: "BOLETA", series: "B001", correlative: 7, issueDate: "2026-10-12T15:00:00.000Z", subtotal: 10.17, igv: 1.83, total: 12 }
+};
+const despatch: DespatchCommand = {
+  tenantId: "t-1", guideId: "g-1", guideType: "REMITENTE", series: "T001", correlative: 5, issueDate: "2026-10-12T15:00:00.000Z",
+  data: {
+    recipient: { documentType: "6", documentNumber: "20000000002", name: "EMPRESA A" },
+    reasonCode: "01", transportMode: "01", transferDate: "2026-10-13", grossWeight: 12.5, weightUnit: "KGM", packages: 2,
+    origin: { ubigeo: "150203", address: "AV ITALIA" }, destination: { ubigeo: "150101", address: "AV LIMA" },
+    carrier: { documentNumber: "20000000003", name: "TRANSPORTES S.A.C", mtcNumber: "MTC123" },
+    items: [{ code: "PROD1", description: "PRODUCTO 1", quantity: 2, unit: "NIU" }],
+    relatedDocument: { documentType: "FACTURA", series: "F001", correlative: 25 }
+  }
+};
+
+tests.push(
+  ["nota de débito: esquema Note con tipoDoc 08 por note/send", async () => {
+    const json = mapCommandToApiPeru({ ...creditNote, documentType: "NOTA_DEBITO", series: "BD01", noteReason: { code: "02", description: "AUMENTO EN EL VALOR" } }, issuer) as unknown as Record<string, unknown>;
+    assert.equal(json.tipoDoc, "08");
+    assert.equal(json.codMotivo, "02");
+    calls.length = 0;
+    respond = () => documentResponse({ success: true, cdrResponse: { accepted: true, id: "BD01-1", code: "0" } });
+    await provider.issueDocument({ ...creditNote, documentType: "NOTA_DEBITO", series: "BD01", noteReason: { code: "02", description: "AUMENTO" } });
+    assert.equal(calls[0].url, "https://facturacion.apisperu.com/api/v1/note/send");
+  }],
+  ["baja de factura: voided/send como el ejemplo oficial", async () => {
+    const { path, body } = mapVoidingToApiPeru(facturaVoiding, issuer) as { path: string; body: Record<string, unknown> & { details: Array<Record<string, string>> } };
+    assert.equal(path, "voided/send");
+    assert.equal(body.correlativo, "007");
+    assert.equal(body.fecGeneracion, "2026-10-12T00:00:00-05:00");
+    assert.equal(body.fecComunicacion, "2026-10-14T00:00:00-05:00");
+    assert.deepEqual(body.details[0], { tipoDoc: "01", serie: "F001", correlativo: "25", desMotivoBaja: "ERROR EN CÁLCULOS" });
+  }],
+  ["baja de boleta: resumen diario (summary/send) con estado 3", async () => {
+    const { path, body } = mapVoidingToApiPeru(boletaVoiding, issuer) as { path: string; body: Record<string, unknown> & { details: Array<Record<string, unknown>> } };
+    assert.equal(path, "summary/send");
+    assert.equal(body.moneda, "PEN");
+    assert.equal(body.details[0].serieNro, "B001-7");
+    assert.equal(body.details[0].estado, "3");
+    assert.equal(body.details[0].total, 12);
+  }],
+  ["baja: envío devuelve ticket (pendiente) y voided/status con CDR aceptado la confirma", async () => {
+    calls.length = 0;
+    respond = (url) => url.includes("/voided/send")
+      ? { status: 200, json: { xml: "<x/>", hash: "h", sunatResponse: { success: true, ticket: "1703154974517" } } }
+      : { status: 200, json: { success: true, cdrResponse: { accepted: true, id: "RA-20261014-7", code: "0", description: "aceptada" } } };
+    const sent = await provider.requestVoiding(facturaVoiding);
+    assert.equal(sent.status, "PENDING");
+    assert.equal(sent.ticket, "1703154974517");
+    const checked = await provider.getVoidingStatus(facturaVoiding, sent.ticket);
+    const url = new URL(calls[1].url);
+    assert.equal(url.pathname, "/api/v1/voided/status");
+    assert.equal(url.searchParams.get("ticket"), "1703154974517");
+    assert.equal(checked.status, "ACCEPTED");
+    const summaryCheck = await provider.getVoidingStatus(boletaVoiding, "T2");
+    assert.equal(new URL(calls[2].url).pathname, "/api/v1/summary/status");
+    assert.equal(summaryCheck.status, "ACCEPTED");
+  }],
+  ["baja: ticket aún en proceso (sin CDR) → pendiente", async () => {
+    respond = () => ({ status: 200, json: { success: false, code: "98", error: { code: "98", message: "En proceso" } } });
+    assert.equal((await provider.getVoidingStatus(facturaVoiding, "T")).status, "PENDING");
+  }],
+  ["guía remitente: Despatch versión 2022 como el ejemplo oficial (transporte público)", async () => {
+    const json = mapDespatchToApiPeru(despatch, issuer) as unknown as Record<string, unknown> & { envio: Record<string, unknown>; addDocs: Array<Record<string, string>> };
+    assert.equal(json.version, 2022);
+    assert.equal(json.tipoDoc, "09");
+    assert.equal(json.envio.codTraslado, "01");
+    assert.equal(json.envio.desTraslado, "VENTA");
+    assert.equal(json.envio.modTraslado, "01");
+    assert.equal(json.envio.fecTraslado, "2026-10-13T00:00:00-05:00");
+    assert.deepEqual(json.envio.transportista, { tipoDoc: "6", numDoc: "20000000003", rznSocial: "TRANSPORTES S.A.C", nroMtc: "MTC123" });
+    assert.equal(json.envio.vehiculo, undefined);
+    assert.deepEqual(json.envio.partida, { ubigueo: "150203", direccion: "AV ITALIA" });
+    assert.equal(json.addDocs[0].nro, "F001-25");
+  }],
+  ["guía transporte privado y transportista (31): vehículo y chofer", async () => {
+    const privateJson = mapDespatchToApiPeru({ ...despatch, data: { ...despatch.data, transportMode: "02", carrier: undefined, vehiclePlate: "ABI453", driver: { documentType: "1", documentNumber: "40003344", names: "LUIS", surnames: "GARCIA", license: "M46545654" } } }, issuer) as unknown as { envio: Record<string, unknown> };
+    assert.deepEqual(privateJson.envio.vehiculo, { placa: "ABI453" });
+    assert.equal((privateJson.envio.choferes as Array<Record<string, string>>)[0].licencia, "M46545654");
+    const carrierJson = mapDespatchToApiPeru({ ...despatch, guideType: "TRANSPORTISTA", series: "V001", data: { ...despatch.data, transportMode: undefined, carrier: undefined, shipper: { documentType: "6", documentNumber: "20000000004", name: "EMPRESA B" }, vehiclePlate: "ABITR564", driver: { documentType: "1", documentNumber: "79214014", names: "LUIS", surnames: "GARCIA", license: "M46545654" } } }, issuer) as unknown as Record<string, unknown>;
+    assert.equal(carrierJson.tipoDoc, "31");
+    assert.deepEqual(carrierJson.remitente, { tipoDoc: "6", numDoc: "20000000004", rznSocial: "EMPRESA B" });
+  }],
+  ["guía: despatch/send con ticket → despatch/status aceptada; PDF por despatch/pdf", async () => {
+    calls.length = 0;
+    respond = (url) => url.includes("/despatch/send")
+      ? { status: 200, json: { xml: "<x/>", hash: "h", sunatResponse: { success: true, ticket: "GRE-1" } } }
+      : url.includes("/despatch/status")
+        ? { status: 200, json: { success: true, cdrResponse: { accepted: true, id: "T001-5", code: "0" } } }
+        : { status: 200, bytes: new TextEncoder().encode("%PDF-1.4 guia") };
+    const sent = await provider.issueDespatch(despatch);
+    assert.equal(sent.status, "PENDING");
+    assert.equal(sent.ticket, "GRE-1");
+    assert.equal((await provider.getDespatchStatus(despatch, "GRE-1")).status, "ACCEPTED");
+    const pdf = await provider.getDespatchPdf(despatch);
+    assert.equal(calls[2].url, "https://facturacion.apisperu.com/api/v1/despatch/pdf");
+    assert.equal(pdf.subarray(0, 4).toString("ascii"), "%PDF");
+  }]
+);
 
 let failed = 0;
 for (const [name, fn] of tests) {

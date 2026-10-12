@@ -7,6 +7,7 @@ const DELIVERY_MIGRATION_ID = "20260827_004_receipt_delivery_queue";
 const SUNAT_RUC_REGISTRY_MIGRATION_ID = "20260828_005_sunat_ruc_registry";
 const APISPERU_SANDBOX_MIGRATION_ID = "20260828_006_apisperu_sandbox";
 const PILOT_FEATURES_MIGRATION_ID = "20261012_007_payments_credit_notes";
+const DOCUMENT_SUITE_MIGRATION_ID = "20261012_008_notes_voidings_despatch";
 
 /**
  * Migración idempotente del MVP 1.0.
@@ -471,6 +472,111 @@ export async function runMigrations() {
       await tx`
         insert into schema_migrations (id)
         values (${PILOT_FEATURES_MIGRATION_ID})
+        on conflict do nothing
+      `;
+    });
+  }
+
+  const documentSuiteApplied = await sql`
+    select id from schema_migrations where id = ${DOCUMENT_SUITE_MIGRATION_ID} limit 1
+  `;
+  if (!documentSuiteApplied.length) {
+    await sql.begin(async (tx) => {
+      // Notas de débito como otro tipo de comprobante.
+      await tx`alter table receipts drop constraint if exists receipts_document_type_check`;
+      await tx`
+        alter table receipts add constraint receipts_document_type_check
+        check (document_type in ('BOLETA', 'FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO'))
+      `;
+      // Contadores de numeración: comprobantes, guías y comunicaciones/resúmenes de baja.
+      await tx`alter table document_series alter column document_type type varchar(20)`;
+      await tx`alter table document_series drop constraint if exists document_series_document_type_check`;
+      await tx`
+        alter table document_series add constraint document_series_document_type_check
+        check (document_type in ('BOLETA', 'FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO', 'GUIA_REMITENTE', 'GUIA_TRANSPORTISTA', 'COMUNICACION_BAJA', 'RESUMEN_BAJA'))
+      `;
+
+      // Motivo SUNAT de la nota (catálogo 09 para crédito, 10 para débito).
+      await tx`alter table receipts add column if not exists note_reason_code varchar(2)`;
+      await tx`update receipts set note_reason_code = '01' where document_type = 'NOTA_CREDITO' and note_reason_code is null`;
+
+      // Modo práctica explícito (las guías reales de remitente también empiezan con "T").
+      await tx`alter table receipts add column if not exists is_practice boolean not null default false`;
+      await tx`update receipts set is_practice = true where series in ('TB01', 'TF01', 'TC01')`;
+
+      // Varias notas de crédito parciales por comprobante; solo una "total" vigente.
+      await tx`drop index if exists uq_receipts_credit_note_per_receipt`;
+      await tx`
+        create unique index if not exists uq_receipts_total_credit_note
+        on receipts (related_receipt_id)
+        where document_type = 'NOTA_CREDITO' and note_reason_code in ('01', '02', '06') and sunat_status <> 'RECHAZADO'
+      `;
+      await tx`create index if not exists idx_receipts_related on receipts (related_receipt_id) where related_receipt_id is not null`;
+
+      // Comunicación de baja (facturas y sus notas) o resumen diario de baja (boletas).
+      await tx`
+        create table if not exists receipt_voidings (
+          id uuid primary key,
+          tenant_id uuid not null references tenants(id) on delete restrict,
+          receipt_id uuid not null references receipts(id) on delete restrict,
+          kind varchar(20) not null check (kind in ('COMUNICACION_BAJA', 'RESUMEN_BAJA')),
+          reason text not null,
+          correlative bigint not null,
+          provider_code text,
+          ticket text,
+          status varchar(20) not null default 'PENDIENTE'
+            check (status in ('PENDIENTE', 'ENVIANDO', 'ACEPTADO', 'RECHAZADO', 'ERROR')),
+          message text,
+          attempt_count integer not null default 0,
+          last_attempt_at timestamptz,
+          is_practice boolean not null default false,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        )
+      `;
+      await tx`
+        create unique index if not exists uq_receipt_voidings_active
+        on receipt_voidings (receipt_id) where status <> 'RECHAZADO'
+      `;
+      await tx`create index if not exists idx_receipt_voidings_tenant on receipt_voidings (tenant_id, created_at desc)`;
+
+      // Guías de remisión electrónicas (remitente y transportista).
+      await tx`
+        create table if not exists despatch_guides (
+          id uuid primary key,
+          tenant_id uuid not null references tenants(id) on delete restrict,
+          client_transaction_id text not null,
+          guide_type varchar(20) not null check (guide_type in ('REMITENTE', 'TRANSPORTISTA')),
+          series varchar(4) not null,
+          correlative bigint not null,
+          issue_date timestamptz not null default now(),
+          transfer_date date not null,
+          data jsonb not null,
+          related_receipt_id uuid references receipts(id) on delete set null,
+          status varchar(20) not null default 'PENDIENTE'
+            check (status in ('PENDIENTE', 'ENVIANDO', 'ACEPTADO', 'RECHAZADO', 'ERROR')),
+          provider_code text,
+          ticket text,
+          message text,
+          provider_pdf_url text,
+          provider_xml_url text,
+          provider_cdr_url text,
+          provider_hash text,
+          provider_qr_data text,
+          attempt_count integer not null default 0,
+          last_attempt_at timestamptz,
+          is_practice boolean not null default false,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now(),
+          unique (tenant_id, client_transaction_id),
+          unique (tenant_id, guide_type, series, correlative)
+        )
+      `;
+      await tx`create index if not exists idx_despatch_guides_tenant on despatch_guides (tenant_id, issue_date desc)`;
+
+      await tx`
+        insert into schema_migrations (id)
+        values (${DOCUMENT_SUITE_MIGRATION_ID})
         on conflict do nothing
       `;
     });

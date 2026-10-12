@@ -96,6 +96,21 @@ Fuera del alcance actual, a acordar con Nubefact: dólares, exoneradas/inafectas
 1. `BILLING_PRODUCTION_ENABLED=true`
 2. Cambiar el negocio a `environment = 'production'`
 
+## 4b. Documentos que emite FAKTU
+
+| Documento | Cómo se usa en la app | Reglas |
+|---|---|---|
+| Boleta / factura | Nueva venta | Factura con RUC y dirección; boleta > S/ 700 identificada |
+| Nota de crédito | Detalle → Corregir o anular → Nota de crédito | 01/02/06 por el total (una sola vigente); 07 devolución por producto; 09 descuento. Nunca supera el saldo |
+| Nota de débito | Detalle → Nota de débito | Intereses, aumento de valor, penalidades |
+| Comunicación de baja | Detalle → Dar de baja | Solo si no se entregó al cliente, sin notas y dentro de 7 días. Si no, nota de crédito |
+| Resumen diario de baja (boletas) | Automático al dar de baja una boleta | Nubefact lo gestiona; con APIsPERU lo envía FAKTU |
+| Guía de remisión remitente / transportista | Configuración → Guías, o desde una venta | Transporte público: RUC del transportista. Privado: placa y conductor. Aceptación asíncrona |
+
+**APIsPERU y guías:** desde 2023, SUNAT emite las guías por una API propia. Al registrar la empresa en APIsPERU hay que completar `client_id` y `client_secret`, que se generan en el portal de SUNAT (tutorial en el panel de APIsPERU). Sin esos datos, las facturas y boletas funcionan, pero las guías no.
+
+**Verificar en beta:** una baja de factura, una baja de boleta (resumen) y una guía de cada tipo. Los adaptadores siguen los manuales oficiales, pero solo se probaron contra simuladores.
+
 ## 5. Despliegue
 
 ```bash

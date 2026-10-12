@@ -24,6 +24,7 @@ import {
   DashboardScreen, POSVentaScreen, HistorialComprobantesScreen, ConfiguracionScreen
 } from "../screens/main/MainSectionScreens";
 import { CashCloseScreen } from "../screens/reports/ReportsScreens";
+import { GuideDetailScreen, GuideFormScreen, GuidesScreen } from "../screens/guides/GuideScreens";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -86,6 +87,9 @@ export function AppRouter() {
         <Stack.Screen name="ReceiptHistory" component={ReceiptHistoryScreen} />
         <Stack.Screen name="ReceiptDetail" component={ReceiptDetailScreen} />
         <Stack.Screen name="CashClose" component={CashCloseScreen} />
+        <Stack.Screen name="Guides" component={GuidesScreen} />
+        <Stack.Screen name="GuideForm" component={GuideFormScreen} />
+        <Stack.Screen name="GuideDetail" component={GuideDetailScreen} />
         <Stack.Screen name="SystemStatus" component={SystemStatusScreen} />
         <Stack.Screen name="Business" component={BusinessScreen} />
         <Stack.Screen name="Support" component={SupportScreen} />

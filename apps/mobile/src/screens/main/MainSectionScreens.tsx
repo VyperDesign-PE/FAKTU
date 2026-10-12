@@ -123,6 +123,7 @@ export function ConfiguracionScreen({ navigation }: Props<"Configuracion">) {
       subtitle="Administración del negocio, facturación electrónica, suscripción y soporte."
     >
       <View style={styles.twoColumns}>
+        <ConfigLink title="Guías de remisión" detail="Traslado de mercadería: remitente o transportista" onPress={() => navigation.navigate("Guides")} />
         <ConfigLink title="Cierre de caja y reportes" detail="Ventas del día por medio de pago y registro mensual para tu contador" onPress={() => navigation.navigate("CashClose")} />
         <ConfigLink title="Datos de empresa" detail="RUC, razón social, nombre comercial y dirección" onPress={() => navigation.navigate("Business")} />
         <ConfigLink title="Facturación electrónica" detail="Proveedor externo, series, comprobantes habilitados y conexión" onPress={() => navigation.navigate("SystemStatus")} />

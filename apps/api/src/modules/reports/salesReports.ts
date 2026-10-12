@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { PAYMENT_METHODS, type PaymentMethod } from "../billing/contracts.js";
 import { displayNumber, listReceiptsBetween, type ReceiptRecord } from "../receipts/receiptRepository.js";
-import { isPracticeSeries } from "../billing/practiceMode.js";
+import { sql } from "../../db/client.js";
 
 /** Perú no usa horario de verano: Lima es siempre UTC-5. */
 const LIMA_OFFSET_HOURS = 5;
@@ -41,8 +41,9 @@ const view = (bucket: Bucket) => ({ count: bucket.count, total: fromCents(bucket
  *
  * - "Ventas" cuenta boletas y facturas no rechazadas: el dinero ya se cobró
  *   aunque SUNAT aún no confirme. Las pendientes se muestran aparte.
- * - Las notas de crédito del día (anulaciones) se restan por medio de pago:
- *   es dinero devuelto al cliente.
+ * - Las notas de crédito del día (anulaciones, devoluciones, descuentos) y las
+ *   bajas aceptadas en el día se restan por medio de pago: es dinero devuelto.
+ * - Las notas de débito (cargos adicionales) se suman.
  */
 export async function dailyClose(tenantId: string, date = limaToday()) {
   const { from, to } = limaDayRange(date);
@@ -53,6 +54,8 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
   const pending = emptyBucket();
   const rejected = emptyBucket();
   const creditNotes = emptyBucket();
+  const debitNotes = emptyBucket();
+  const voidings = emptyBucket();
   const byMethod = new Map<PaymentMethod, { sales: Bucket; refunds: Bucket }>(
     PAYMENT_METHODS.map((method) => [method, { sales: emptyBucket(), refunds: emptyBucket() }])
   );
@@ -66,6 +69,12 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
       add(method.refunds, receipt);
       continue;
     }
+    if (receipt.documentType === "NOTA_DEBITO") {
+      if (receipt.status === "RECHAZADO") continue;
+      add(debitNotes, receipt);
+      add(method.sales, receipt);
+      continue;
+    }
     if (receipt.status === "RECHAZADO") {
       add(rejected, receipt);
       continue;
@@ -75,6 +84,19 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
     add(method.sales, receipt);
     if (receipt.status === "ACEPTADO") add(accepted, receipt);
     else add(pending, receipt);
+  }
+
+  // Comprobantes dados de baja (aceptada) en el día: devolución del total.
+  const voided = await sql<{ total: string; payment_method: PaymentMethod }[]>`
+    select r.total, r.payment_method
+    from receipt_voidings v join receipts r on r.id = v.receipt_id
+    where v.tenant_id = ${tenantId} and v.status = 'ACEPTADO'
+      and v.updated_at >= ${from} and v.updated_at < ${to}
+  `;
+  for (const row of voided) {
+    const asReceipt = { total: Number(row.total) } as ReceiptRecord;
+    add(voidings, asReceipt);
+    add((byMethod.get(row.payment_method) ?? byMethod.get("EFECTIVO")!).refunds, asReceipt);
   }
 
   const paymentMethods = [...byMethod.entries()]
@@ -94,7 +116,9 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
     pending: view(pending),
     rejected: view(rejected),
     creditNotes: view(creditNotes),
-    netTotal: fromCents(sales.totalCents - creditNotes.totalCents),
+    debitNotes: view(debitNotes),
+    voidings: view(voidings),
+    netTotal: fromCents(sales.totalCents + debitNotes.totalCents - creditNotes.totalCents - voidings.totalCents),
     /** Efectivo que debería haber en caja por ventas del día (sin fondo inicial). */
     expectedCash: paymentMethods.find((row) => row.method === "EFECTIVO")?.net ?? 0,
     byDocumentType: { BOLETA: view(byDocumentType.BOLETA), FACTURA: view(byDocumentType.FACTURA) },
@@ -102,7 +126,7 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
   };
 }
 
-const SUNAT_TYPE = { FACTURA: "01", BOLETA: "03", NOTA_CREDITO: "07" } as const;
+const SUNAT_TYPE = { FACTURA: "01", BOLETA: "03", NOTA_CREDITO: "07", NOTA_DEBITO: "08" } as const;
 const SUNAT_ID_TYPE = { DNI: "1", RUC: "6" } as const;
 
 function csvCell(value: string | number | undefined | null) {
@@ -119,13 +143,14 @@ function limaDateTime(iso: string) {
 
 /**
  * Registro de ventas del mes en CSV (UTF-8 con BOM para que Excel respete
- * tildes). Las notas de crédito van con importes negativos y referencia al
- * comprobante que modifican, como las espera el contador.
+ * tildes). Las notas de crédito van con importes negativos y las de débito
+ * positivos, con referencia al comprobante que modifican, como las espera el
+ * contador. Los comprobantes dados de baja se marcan en la columna "Anulado".
  */
 export async function salesRegisterCsv(tenantId: string, month: string) {
   const { from, to } = limaMonthRange(month);
   // Las ventas de práctica no son operaciones tributarias: no van al contador.
-  const receipts = (await listReceiptsBetween(tenantId, from, to)).filter((receipt) => !isPracticeSeries(receipt.series));
+  const receipts = (await listReceiptsBetween(tenantId, from, to)).filter((receipt) => !receipt.practice);
   const byId = new Map(receipts.map((receipt) => [receipt.id, receipt]));
 
   const header = [
@@ -152,7 +177,7 @@ export async function salesRegisterCsv(tenantId: string, month: string) {
       (sign * receipt.total).toFixed(2),
       receipt.paymentMethod,
       receipt.status,
-      receipt.creditNote?.status === "ACEPTADO" ? "SI" : "NO",
+      receipt.voiding?.status === "ACEPTADO" ? "SI (BAJA)" : receipt.creditNote?.status === "ACEPTADO" ? "SI" : "NO",
       related ? displayNumber(related) : receipt.relatedReceiptId ? "(otro mes)" : ""
     ].map(csvCell).join(","));
   }

@@ -104,7 +104,9 @@ export function CashCloseScreen(_props: P<"CashClose">) {
       <Card>
         <InfoRow label={`Boletas (${report.byDocumentType.BOLETA.count})`} value={money(report.byDocumentType.BOLETA.total)} />
         <InfoRow label={`Facturas (${report.byDocumentType.FACTURA.count})`} value={money(report.byDocumentType.FACTURA.total)} />
-        <InfoRow label={`Anulaciones (${report.creditNotes.count})`} value={`−${money(report.creditNotes.total)}`} />
+        <InfoRow label={`Notas de crédito (${report.creditNotes.count})`} value={`−${money(report.creditNotes.total)}`} />
+        {report.voidings?.count ? <InfoRow label={`Bajas (${report.voidings.count})`} value={`−${money(report.voidings.total)}`} /> : null}
+        {report.debitNotes?.count ? <InfoRow label={`Notas de débito (${report.debitNotes.count})`} value={money(report.debitNotes.total)} /> : null}
       </Card>
 
       {report.pending.count ? <Card tone="warning"><InfoRow label={`Pendientes de SUNAT (${report.pending.count})`} value={money(report.pending.total)} /><Text style={styles.muted}>Ya cobradas; FAKTU sigue confirmándolas automáticamente.</Text></Card> : null}

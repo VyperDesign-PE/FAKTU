@@ -25,10 +25,8 @@ import {
   buildBillingCommand,
   getReceiptById,
   getReceiptByTransaction,
-  CreditNoteError,
   isFinalStatus,
   listReceipts,
-  prepareCreditNote,
   prepareReceipt,
   receiptToApi,
   type ReceiptRecord
@@ -39,7 +37,7 @@ import { assertDocumentRules, DocumentRuleError } from "./modules/receipts/docum
 import { getMembershipRole } from "./modules/tenants/membershipRepository.js";
 import { hasBillingCredential } from "./modules/billing/secretResolver.js";
 import { createExportToken, dailyClose, limaToday, salesRegisterCsv, verifyExportToken } from "./modules/reports/salesReports.js";
-import { publicBaseUrl } from "./modules/sharing/publicReceiptLinks.js";
+import { createReceiptLinkToken, publicBaseUrl } from "./modules/sharing/publicReceiptLinks.js";
 import { getBusiness, updateBusiness } from "./modules/tenants/tenantRepository.js";
 import {
   getBillingConnectionState,
@@ -48,7 +46,39 @@ import {
   updateTenantBillingConfig,
   validProviders
 } from "./modules/billing/tenantBillingConfigRepository.js";
-import { PAYMENT_METHODS, type BillingEnvironment, type BillingProviderCode } from "./modules/billing/contracts.js";
+import {
+  CREDIT_NOTE_REASONS,
+  DEBIT_NOTE_REASONS,
+  PAYMENT_METHODS,
+  type BillingEnvironment,
+  type BillingProviderCode,
+  type CreditNoteReasonCode,
+  type DebitNoteReasonCode
+} from "./modules/billing/contracts.js";
+import { NoteError, prepareCreditNote, prepareDebitNote } from "./modules/receipts/notes.js";
+import {
+  getVoidingById,
+  prepareVoiding,
+  processPendingVoidings,
+  processVoiding,
+  VoidingError,
+  voidingBlockers,
+  voidingToApi,
+  type VoidingRecord
+} from "./modules/voidings/voidingService.js";
+import {
+  getGuideById,
+  GuideError,
+  guideCommand,
+  guideNumber,
+  guideToApi,
+  listGuides,
+  prepareGuide,
+  processGuide,
+  processPendingGuides,
+  renderGuidePdf,
+  type GuideRecord
+} from "./modules/despatch/despatchService.js";
 import { createReceiptSharePackage, DOCUMENT_LABEL } from "./modules/sharing/receiptSharingService.js";
 import { verifyReceiptLinkToken } from "./modules/sharing/publicReceiptLinks.js";
 import { renderReceiptPdf } from "./modules/sharing/receiptPdf.js";
@@ -388,8 +418,8 @@ app.get("/v1/receipts/by-transaction/:clientTransactionId", { preHandler: requir
   if (!parsed.success) return reply.code(400).send({ message: "Transacción inválida" });
   const receipt = await getReceiptByTransaction(claims(request).tenantId, parsed.data.clientTransactionId);
   if (!receipt) return reply.code(404).send({ message: "Comprobante no encontrado" });
-  const full = await getReceiptById(claims(request).tenantId, receipt.id);
-  return receiptToApi(full ?? receipt);
+  const full = (await getReceiptById(claims(request).tenantId, receipt.id)) ?? receipt;
+  return { ...receiptToApi(full), voidingBlockers: voidingBlockers(full) };
 });
 
 app.get("/v1/receipts/:id", { preHandler: requireAuth }, async (request, reply) => {
@@ -397,7 +427,8 @@ app.get("/v1/receipts/:id", { preHandler: requireAuth }, async (request, reply) 
   if (!parsed.success) return reply.code(400).send({ message: "Comprobante inválido" });
   const receipt = await getReceiptById(claims(request).tenantId, parsed.data.id);
   if (!receipt) return reply.code(404).send({ message: "Comprobante no encontrado" });
-  return receiptToApi(receipt);
+  // Motivos por los que no puede darse de baja (vacío = puede).
+  return { ...receiptToApi(receipt), voidingBlockers: voidingBlockers(receipt) };
 });
 
 app.post("/v1/receipts/:id/reconcile", { preHandler: requireAuth }, async (request, reply) => {
@@ -413,23 +444,220 @@ app.post("/v1/receipts/:id/reconcile", { preHandler: requireAuth }, async (reque
   return sendReceipt(reply, stored);
 });
 
-app.post("/v1/receipts/:id/void", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
-  const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
-  const body = z.object({ reason: z.string().trim().min(3).max(250) }).safeParse(request.body ?? {});
-  if (!params.success) return reply.code(400).send({ message: "Comprobante inválido" });
-  if (!body.success) return reply.code(400).send({ code: "REASON_REQUIRED", message: "Indica el motivo de la anulación.", retryable: false });
-  const tenantId = claims(request).tenantId;
+async function issuePreparedNote(request: FastifyRequest, reply: FastifyReply, tenantId: string, prepare: () => Promise<{ receipt: ReceiptRecord }>) {
   let prepared;
   try {
-    prepared = await prepareCreditNote(tenantId, params.data.id, body.data.reason.toUpperCase());
+    prepared = await prepare();
   } catch (error) {
-    if (error instanceof CreditNoteError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, retryable: false });
+    if (error instanceof NoteError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, retryable: false });
     throw error;
   }
   if (isFinalStatus(prepared.receipt.status)) return sendReceipt(reply, prepared.receipt);
   const outcome = await issueOrReconcileReceipt(billingService, tenantId, prepared.receipt.id);
-  if (outcome.failed) request.log.warn({ receiptId: outcome.receipt.id, message: outcome.receipt.providerMessage }, "credit note issue failed");
+  if (outcome.failed) request.log.warn({ receiptId: outcome.receipt.id, message: outcome.receipt.providerMessage }, "note issue failed");
   return sendReceipt(reply, outcome.receipt, outcome.failed);
+}
+
+const receiptIdParams = z.object({ id: z.string().uuid() });
+
+// Compatibilidad: "Anular venta" = nota de crédito 01 por el total.
+app.post("/v1/receipts/:id/void", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  const body = z.object({ reason: z.string().trim().min(3).max(250) }).safeParse(request.body ?? {});
+  if (!params.success) return reply.code(400).send({ message: "Comprobante inválido" });
+  if (!body.success) return reply.code(400).send({ code: "REASON_REQUIRED", message: "Indica el motivo de la anulación.", retryable: false });
+  const tenantId = claims(request).tenantId;
+  return issuePreparedNote(request, reply, tenantId, () => prepareCreditNote(tenantId, params.data.id, { reasonCode: "01", description: body.data.reason }));
+});
+
+app.post("/v1/receipts/:id/credit-notes", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  const body = z.object({
+    reasonCode: z.enum(Object.keys(CREDIT_NOTE_REASONS) as [CreditNoteReasonCode, ...CreditNoteReasonCode[]]),
+    description: z.string().trim().min(3).max(250).optional(),
+    items: z.array(z.object({ lineIndex: z.number().int().min(0), quantity: z.number().positive() })).min(1).max(200).optional(),
+    amount: z.number().positive().optional(),
+    clientTransactionId: z.string().min(10).max(120).optional()
+  }).safeParse(request.body ?? {});
+  if (!params.success) return reply.code(400).send({ message: "Comprobante inválido" });
+  if (!body.success) return reply.code(400).send({ code: "INVALID_NOTE", message: "Revisa el motivo y el detalle de la nota de crédito.", retryable: false, details: body.error.flatten() });
+  const tenantId = claims(request).tenantId;
+  return issuePreparedNote(request, reply, tenantId, () => prepareCreditNote(tenantId, params.data.id, body.data));
+});
+
+app.post("/v1/receipts/:id/debit-notes", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  const body = z.object({
+    reasonCode: z.enum(Object.keys(DEBIT_NOTE_REASONS) as [DebitNoteReasonCode, ...DebitNoteReasonCode[]]),
+    description: z.string().trim().min(3).max(250).optional(),
+    items: z.array(z.object({ name: z.string().trim().min(1).max(250), quantity: z.number().positive(), unitPrice: z.number().positive() })).min(1).max(50),
+    clientTransactionId: z.string().min(10).max(120).optional()
+  }).safeParse(request.body ?? {});
+  if (!params.success) return reply.code(400).send({ message: "Comprobante inválido" });
+  if (!body.success) return reply.code(400).send({ code: "INVALID_NOTE", message: "Revisa el motivo y los cargos de la nota de débito.", retryable: false, details: body.error.flatten() });
+  const tenantId = claims(request).tenantId;
+  return issuePreparedNote(request, reply, tenantId, () => prepareDebitNote(tenantId, params.data.id, body.data));
+});
+
+// ---------- Comunicación de baja ----------
+
+const isoDateSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
+
+function sendVoiding(reply: FastifyReply, voiding: VoidingRecord, receipt?: ReceiptRecord | null) {
+  const payload = { voiding: voidingToApi(voiding), receipt: receipt ? receiptToApi(receipt) : undefined };
+  if (voiding.status === "ACEPTADO") return reply.send(payload);
+  if (voiding.status === "RECHAZADO") return reply.code(422).send(payload);
+  if (voiding.status === "ERROR") return reply.code(503).send(payload);
+  return reply.code(202).send(payload);
+}
+
+app.post("/v1/receipts/:id/baja", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  const body = z.object({ reason: z.string().trim().min(3).max(100) }).safeParse(request.body ?? {});
+  if (!params.success) return reply.code(400).send({ message: "Comprobante inválido" });
+  if (!body.success) return reply.code(400).send({ code: "REASON_REQUIRED", message: "Indica el motivo de la baja.", retryable: false });
+  const tenantId = claims(request).tenantId;
+  let prepared;
+  try {
+    prepared = await prepareVoiding(tenantId, params.data.id, body.data.reason);
+  } catch (error) {
+    if (error instanceof VoidingError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, retryable: false });
+    throw error;
+  }
+  const voiding = await processVoiding(billingService, tenantId, prepared.voiding.id);
+  return sendVoiding(reply, voiding, await getReceiptById(tenantId, params.data.id));
+});
+
+app.post("/v1/voidings/:id/refresh", { preHandler: requireAuth }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Baja inválida" });
+  const tenantId = claims(request).tenantId;
+  const existing = await getVoidingById(tenantId, params.data.id);
+  if (!existing) return reply.code(404).send({ message: "Baja no encontrada" });
+  const voiding = await processVoiding(billingService, tenantId, existing.id);
+  return sendVoiding(reply, voiding, await getReceiptById(tenantId, voiding.receiptId));
+});
+
+// ---------- Guías de remisión ----------
+
+const partySchema = z.object({
+  documentType: z.enum(["6", "1", "4", "7"]),
+  documentNumber: z.string().trim().min(8).max(15),
+  name: z.string().trim().min(2).max(100),
+  address: z.string().trim().max(100).optional()
+});
+const placeSchema = z.object({ ubigeo: z.string().regex(/^\d{6}$/), address: z.string().trim().min(3).max(100) });
+const guideSchema = z.object({
+  clientTransactionId: z.string().min(10).max(120),
+  guideType: z.enum(["REMITENTE", "TRANSPORTISTA"]),
+  relatedReceiptId: z.string().uuid().optional(),
+  data: z.object({
+    recipient: partySchema,
+    shipper: partySchema.optional(),
+    reasonCode: z.enum(["01", "02", "03", "04", "05", "06", "07", "08", "09", "13", "14", "17", "18"]).optional(),
+    reasonDescription: z.string().trim().max(70).optional(),
+    transportMode: z.enum(["01", "02"]).optional(),
+    transferDate: isoDateSchema,
+    grossWeight: z.number().positive(),
+    weightUnit: z.enum(["KGM", "TNE"]),
+    packages: z.number().int().positive().optional(),
+    origin: placeSchema,
+    destination: placeSchema,
+    carrier: z.object({ documentNumber: z.string().regex(/^\d{11}$/), name: z.string().trim().min(2).max(100), mtcNumber: z.string().trim().max(20).optional() }).optional(),
+    vehiclePlate: z.string().trim().regex(/^[A-Z0-9-]{5,8}$/i).transform((value) => value.toUpperCase().replace(/-/g, "")).optional(),
+    driver: z.object({
+      documentType: z.enum(["1", "4", "7"]),
+      documentNumber: z.string().trim().min(8).max(15),
+      names: z.string().trim().min(2).max(100),
+      surnames: z.string().trim().min(2).max(100),
+      license: z.string().trim().min(5).max(20)
+    }).optional(),
+    notes: z.string().trim().max(250).optional(),
+    items: z.array(z.object({
+      code: z.string().trim().max(30).optional(),
+      description: z.string().trim().min(1).max(250),
+      quantity: z.number().positive(),
+      unit: z.string().trim().min(2).max(5).default("NIU")
+    })).min(1).max(200)
+  })
+});
+
+function sendGuide(reply: FastifyReply, guide: GuideRecord) {
+  const payload = guideToApi(guide);
+  if (guide.status === "ACEPTADO") return reply.send(payload);
+  if (guide.status === "RECHAZADO") return reply.code(422).send(payload);
+  if (guide.status === "ERROR") return reply.code(503).send(payload);
+  return reply.code(202).send(payload);
+}
+
+app.post("/v1/despatch-guides", { preHandler: requireAuth }, async (request, reply) => {
+  const parsed = guideSchema.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ code: "INVALID_GUIDE", message: "Revisa los datos de la guía de remisión.", retryable: false, details: parsed.error.flatten() });
+  const tenantId = claims(request).tenantId;
+  let prepared;
+  try {
+    prepared = await prepareGuide(tenantId, parsed.data);
+  } catch (error) {
+    if (error instanceof GuideError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, retryable: false });
+    throw error;
+  }
+  return sendGuide(reply, await processGuide(billingService, tenantId, prepared.guide.id));
+});
+
+app.get("/v1/despatch-guides", { preHandler: requireAuth }, async (request) => {
+  const query = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }).parse(request.query);
+  return (await listGuides(claims(request).tenantId, query.limit ?? 100)).map(guideToApi);
+});
+
+app.get("/v1/despatch-guides/:id", { preHandler: requireAuth }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Guía inválida" });
+  const guide = await getGuideById(claims(request).tenantId, params.data.id);
+  if (!guide) return reply.code(404).send({ message: "Guía no encontrada" });
+  return guideToApi(guide);
+});
+
+app.post("/v1/despatch-guides/:id/refresh", { preHandler: requireAuth }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Guía inválida" });
+  const tenantId = claims(request).tenantId;
+  const guide = await getGuideById(tenantId, params.data.id);
+  if (!guide) return reply.code(404).send({ message: "Guía no encontrada" });
+  return sendGuide(reply, await processGuide(billingService, tenantId, guide.id));
+});
+
+app.post("/v1/despatch-guides/:id/share", { preHandler: requireAuth }, async (request, reply) => {
+  const params = receiptIdParams.safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Guía inválida" });
+  const tenantId = claims(request).tenantId;
+  const guide = await getGuideById(tenantId, params.data.id);
+  if (!guide) return reply.code(404).send({ message: "Guía no encontrada" });
+  if (guide.status !== "ACEPTADO") return reply.code(409).send({ message: "La guía todavía no fue aceptada por SUNAT." });
+  if (guide.pdfUrl?.startsWith("https://")) return { pdfUrl: guide.pdfUrl, number: guideNumber(guide) };
+  const link = createReceiptLinkToken({ receiptId: guide.id, tenantId, purpose: "GUIDE_PDF" });
+  return { pdfUrl: `${publicBaseUrl()}/g/pdf?t=${encodeURIComponent(link.token)}`, number: guideNumber(guide), expiresAt: link.expiresAt.toISOString() };
+});
+
+app.get("/g/pdf", { config: publicRateLimit }, async (request, reply) => {
+  const parsed = z.object({ t: z.string().min(20) }).safeParse(request.query);
+  if (!parsed.success) return reply.code(400).type("text/plain").send("Enlace inválido");
+  try {
+    const token = verifyReceiptLinkToken(parsed.data.t, "GUIDE_PDF");
+    const [guide, business] = await Promise.all([getGuideById(token.tenantId, token.receiptId), getBusiness(token.tenantId)]);
+    if (!guide || !business) return reply.code(404).type("text/plain").send("Guía no encontrada");
+    if (guide.pdfUrl?.startsWith("https://")) return reply.redirect(guide.pdfUrl);
+    if (guide.status === "ACEPTADO" && guide.providerCode && guide.providerCode !== "mock") {
+      try {
+        const official = await billingService.despatchPdf(guideCommand(guide));
+        if (official) return reply.header("Content-Type", "application/pdf").header("Content-Disposition", `inline; filename="${guideNumber(guide)}.pdf"`).send(official);
+      } catch (error) {
+        request.log.warn({ error, guideId: guide.id }, "official guide PDF unavailable; using internal PDF");
+      }
+    }
+    return reply.header("Content-Type", "application/pdf").header("Content-Disposition", `inline; filename="${guideNumber(guide)}.pdf"`).send(renderGuidePdf(guide, business));
+  } catch (error) {
+    return reply.code(400).type("text/plain").send(error instanceof Error ? error.message : "Enlace inválido");
+  }
 });
 
 const isoDate = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
@@ -675,7 +903,11 @@ if ((process.env.RECEIPT_WORKER_ENABLED ?? "true").toLowerCase() === "true" && w
     if (running) return;
     running = true;
     try {
-      const processed = await processPendingReceipts(billingService);
+      const processed = [
+        ...await processPendingReceipts(billingService),
+        ...await processPendingVoidings(billingService),
+        ...await processPendingGuides(billingService)
+      ];
       if (processed.length) app.log.info({ processed }, "pending receipts processed");
     } catch (error) {
       app.log.error({ error }, "pending receipts worker failed");

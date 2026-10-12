@@ -2,7 +2,7 @@
   "expo": {
     "name": "FAKTU",
     "slug": "faktu",
-    "version": "0.15.0",
+    "version": "0.16.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {

@@ -8,7 +8,8 @@ import { useApp } from "../../context/AppContext";
 import { useAuth } from "../../context/AuthContext";
 import { theme } from "../../theme";
 import { PAYMENT_METHODS } from "../../domain/types";
-import { voidReceipt, getBillingSettings, getRemoteReceiptByTransaction, getRucRegistryStatus, listBillingProviders, testBillingConnection, updateBillingSettings, type BillingEnvironment, type BillingProviderCode, type BillingProviderOption, type BillingSettings, type RemoteReceipt, type RucRegistryStatus } from "../../services/api";
+import { ReceiptActions } from "./ReceiptActions";
+import { getBillingSettings, getRemoteReceiptByTransaction, getRucRegistryStatus, listBillingProviders, testBillingConnection, updateBillingSettings, type BillingEnvironment, type BillingProviderCode, type BillingProviderOption, type BillingSettings, type RemoteReceipt, type RucRegistryStatus } from "../../services/api";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
@@ -20,7 +21,7 @@ export function CatalogScreen({ navigation }: P<"Catalog">) {
   </Screen>;
 }
 
-const DOC_LABEL: Record<string, string> = { BOLETA: "Boleta", FACTURA: "Factura", NOTA_CREDITO: "Nota de crédito" };
+const DOC_LABEL: Record<string, string> = { BOLETA: "Boleta", FACTURA: "Factura", NOTA_CREDITO: "Nota de crédito", NOTA_DEBITO: "Nota de débito" };
 
 /**
  * Lista de comprobantes: primero las ventas del dispositivo que aún no llegan
@@ -67,10 +68,7 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
   const localReceipt = local && (local.status !== "ACCEPTED" || !online) ? local : undefined;
   const summary = history.find((r) => r.clientTransactionId === route.params.clientTransactionId);
   const [remoteReceipt, setRemoteReceipt] = useState<RemoteReceipt | undefined>(summary);
-  const [voiding, setVoiding] = useState(false);
-  const [showVoid, setShowVoid] = useState(false);
-  const [voidReason, setVoidReason] = useState("");
-  const [voidMessage, setVoidMessage] = useState<string>();
+  const [actionMessage, setActionMessage] = useState<string>();
 
   useEffect(() => {
     if (localReceipt) return;
@@ -79,29 +77,10 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
       .catch(() => undefined);
   }, [localReceipt, route.params.clientTransactionId]);
 
-  async function confirmVoid() {
-    if (!remoteReceipt) return;
-    if (voidReason.trim().length < 3) {
-      setVoidMessage("Escribe el motivo de la anulación (por ejemplo: devolución del producto).");
-      return;
-    }
-    setVoiding(true);
-    setVoidMessage(undefined);
-    try {
-      const note = await voidReceipt(remoteReceipt.id, voidReason.trim());
-      setVoidMessage(note.status === "ACCEPTED"
-        ? `Venta anulada con la nota de crédito ${note.officialNumber ?? ""}.`
-        : note.status === "REJECTED"
-          ? `La nota de crédito fue rechazada: ${note.message ?? "revisa el comprobante"}.`
-          : "La nota de crédito se está procesando. FAKTU la confirmará automáticamente.");
-      setShowVoid(false);
-      setRemoteReceipt(await getRemoteReceiptByTransaction(route.params.clientTransactionId));
-      await refreshHistory();
-    } catch (cause) {
-      setVoidMessage(cause instanceof Error ? cause.message : "No pudimos anular la venta.");
-    } finally {
-      setVoiding(false);
-    }
+  async function afterAction(message: string) {
+    setActionMessage(message);
+    setRemoteReceipt(await getRemoteReceiptByTransaction(route.params.clientTransactionId));
+    await refreshHistory();
   }
 
   if (localReceipt) {
@@ -125,7 +104,7 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
   return <Screen title="Detalle del comprobante" subtitle={remoteReceipt.officialNumber ?? remoteReceipt.temporaryNumber}>
     <Card tone={remoteReceipt.voided ? "default" : remoteReceipt.status === "ACCEPTED" ? "success" : remoteReceipt.status === "ERROR" || remoteReceipt.status === "REJECTED" ? "danger" : "warning"}>
       <InfoRow label="Estado" value={remoteReceipt.voided ? "Anulado" : friendlyRemoteStatus(remoteReceipt.status)} />
-      <InfoRow label="Tipo" value={remoteReceipt.documentType === "NOTA_CREDITO" ? "NOTA DE CRÉDITO" : remoteReceipt.documentType} />
+      <InfoRow label="Tipo" value={DOC_LABEL[remoteReceipt.documentType] ?? remoteReceipt.documentType} />
       <InfoRow label="Fecha" value={new Date(remoteReceipt.issueDate).toLocaleString()} />
       {remoteReceipt.paymentMethod ? <InfoRow label="Pago" value={PAYMENT_METHODS.find((m) => m.value === remoteReceipt.paymentMethod)?.label ?? remoteReceipt.paymentMethod} /> : null}
       <InfoRow label="Cliente" value={remoteReceipt.customer?.name ?? "Público general"} />
@@ -136,17 +115,13 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
     {remoteReceipt.items?.length ? <><SectionTitle>Detalle</SectionTitle><Card>{remoteReceipt.items.map((item) => <InfoRow key={`${item.id}-${item.name}`} label={`${item.name} × ${item.quantity}`} value={`S/ ${(item.quantity * item.unitPrice).toFixed(2)}`} />)}</Card></> : null}
     {remoteReceipt.message ? <Card tone={remoteReceipt.status === "ERROR" || remoteReceipt.status === "REJECTED" ? "danger" : "info"}><Text style={styles.body}>{remoteReceipt.message}</Text></Card> : null}
     {remoteReceipt.creditNote ? <Card tone={remoteReceipt.voided ? "danger" : "warning"}><InfoRow label="Nota de crédito" value={remoteReceipt.creditNote.officialNumber ?? "En proceso"} /><InfoRow label="Estado" value={friendlyRemoteStatus(remoteReceipt.creditNote.status)} /></Card> : null}
-    {remoteReceipt.documentType === "NOTA_CREDITO" && remoteReceipt.creditNoteReason ? <Card><InfoRow label="Motivo" value={remoteReceipt.creditNoteReason} /></Card> : null}
-    {voidMessage ? <Card tone="info"><Text style={styles.body}>{voidMessage}</Text></Card> : null}
+    {(remoteReceipt.documentType === "NOTA_CREDITO" || remoteReceipt.documentType === "NOTA_DEBITO") && remoteReceipt.noteDescription ? <Card><InfoRow label="Motivo" value={remoteReceipt.noteDescription} /></Card> : null}
+    {actionMessage ? <Card tone="info"><Text style={styles.body}>{actionMessage}</Text></Card> : null}
     <PrimaryButton label="COMPARTIR" onPress={() => navigation.navigate("ShareReceipt", { clientTransactionId: route.params.clientTransactionId })} tone="outline" />
-    {remoteReceipt.status === "ACCEPTED" && remoteReceipt.documentType !== "NOTA_CREDITO" && (!remoteReceipt.creditNote || remoteReceipt.creditNote.status === "REJECTED") ? (
-      showVoid ? <Card tone="warning">
-        <Text style={styles.body}>Se emitirá una nota de crédito por S/ {remoteReceipt.total.toFixed(2)} que anula esta venta ante SUNAT. Esta acción no se puede deshacer.</Text>
-        <TextField label="Motivo" value={voidReason} onChangeText={setVoidReason} placeholder="Ej. Devolución del producto" />
-        <PrimaryButton label={voiding ? "ANULANDO..." : "CONFIRMAR ANULACIÓN"} onPress={() => void confirmVoid()} disabled={voiding || !online} />
-        <PrimaryButton label="CANCELAR" onPress={() => setShowVoid(false)} tone="outline" />
-      </Card> : <PrimaryButton label="ANULAR VENTA" onPress={() => setShowVoid(true)} tone="outline" disabled={!online} />
-    ) : null}
+    {remoteReceipt.status === "ACCEPTED" && !remoteReceipt.voided && (remoteReceipt.documentType === "BOLETA" || remoteReceipt.documentType === "FACTURA")
+      ? <PrimaryButton label="CREAR GUÍA DE REMISIÓN" onPress={() => navigation.navigate("GuideForm", { receiptClientTransactionId: route.params.clientTransactionId })} tone="outline" />
+      : null}
+    <ReceiptActions receipt={remoteReceipt} online={online} onChanged={afterAction} />
   </Screen>;
 }
 

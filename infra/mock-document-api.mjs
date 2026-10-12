@@ -2,7 +2,7 @@ import http from "node:http";
 
 const port = Number(process.env.PORT ?? 4100);
 const expectedToken = process.env.MOCK_DOCUMENT_TOKEN ?? "e2e-token";
-const stats = { dni: 0, ruc: 0, nubefactIssued: 0, nubefactQueries: 0, apisperuIssued: 0, apisperuPdfs: 0 };
+const stats = { dni: 0, ruc: 0, nubefactIssued: 0, nubefactQueries: 0, nubefactVoidings: 0, nubefactGuides: 0, apisperuIssued: 0, apisperuPdfs: 0, apisperuTickets: 0 };
 const apisperuToken = process.env.MOCK_APISPERU_TOKEN ?? "e2e-apisperu-token";
 const apisperuDocs = new Map();
 
@@ -11,7 +11,30 @@ const apisperuDocs = new Map();
  * invoice/send y note/send devuelven DocumentResponse; los errores de
  * validación son una lista { field, message }; invoice/status consulta el CDR.
  */
+const apisperuTickets = new Map();
+
 function apisperu(path, body, query) {
+  if (["/voided/send", "/summary/send", "/despatch/send"].includes(path)) {
+    const errors = [];
+    if (!body.company?.ruc) errors.push({ field: "company.ruc", message: "requerido" });
+    if (!Array.isArray(body.details) || !body.details.length) errors.push({ field: "details", message: "requerido" });
+    if (path === "/summary/send" && body.details?.some((d) => d.estado !== "3" && d.estado !== "1")) errors.push({ field: "details.estado", message: "inválido" });
+    if (path === "/despatch/send" && (!body.envio?.partida?.ubigueo || !body.envio?.llegada?.ubigueo || !(body.envio?.pesoTotal > 0))) errors.push({ field: "envio", message: "incompleto" });
+    if (errors.length) return [400, errors];
+    stats.apisperuTickets += 1;
+    const ticket = `${path.split("/")[1]}-${Date.now()}-${stats.apisperuTickets}`;
+    apisperuTickets.set(ticket, path);
+    return [200, { xml: "<x/>", hash: "h", sunatResponse: { success: true, ticket } }];
+  }
+  if (["/voided/status", "/summary/status", "/despatch/status"].includes(path)) {
+    const ticket = query.get("ticket");
+    if (!apisperuTickets.has(ticket)) return [200, { success: false, code: "99", error: { code: "0127", message: "El ticket no existe" } }];
+    return [200, { success: true, code: "0", cdrZip: "CDR", cdrResponse: { accepted: true, id: ticket, code: "0", description: "Aceptado" } }];
+  }
+  if (path === "/despatch/pdf") {
+    stats.apisperuPdfs += 1;
+    return [200, Buffer.from(`%PDF-1.4\n% APISPERU-GUIA ${body.serie}-${body.correlativo}\n%%EOF\n`), "application/pdf"];
+  }
   if (path === "/invoice/status") {
     const doc = apisperuDocs.get(`${query.get("tipo")}-${query.get("serie")}-${query.get("numero")}`);
     return doc ? [200, { success: true, cdrZip: "CDR", cdrResponse: doc.cdrResponse }] : [200, { success: false, error: { code: "0127", message: "No existe" } }];
@@ -39,6 +62,8 @@ function apisperu(path, body, query) {
 }
 const nubefactToken = process.env.MOCK_NUBEFACT_TOKEN ?? "e2e-nubefact-token";
 const nubefactDocs = new Map();
+const nubefactVoidings = new Map();
+const nubefactGuides = new Map();
 const cents = (value) => Math.round(Number(value) * 100);
 
 /**
@@ -53,6 +78,34 @@ function nubefact(body) {
     const doc = nubefactDocs.get(key);
     return doc ? [200, doc] : [400, { errors: "El documento indicado no existe o no fue enviado a NubeFacT", codigo: 24 }];
   }
+  if (body.operacion === "generar_anulacion") {
+    if (!nubefactDocs.has(key)) return [400, { errors: "El documento indicado no existe o no fue enviado a NubeFacT", codigo: 24 }];
+    if (!body.motivo) return [400, { errors: "El motivo es obligatorio", codigo: 20 }];
+    if (nubefactVoidings.has(key)) return [400, { errors: "Este documento ya existe en NubeFacT", codigo: 23 }];
+    stats.nubefactVoidings += 1;
+    nubefactVoidings.set(key, { numero: body.numero, sunat_ticket_numero: `T-${Date.now()}`, enlace: `https://www.nubefact.com/anulacion/${key}` });
+    return [200, { ...nubefactVoidings.get(key), aceptada_por_sunat: false, sunat_responsecode: null }];
+  }
+  if (body.operacion === "consultar_anulacion") {
+    const voiding = nubefactVoidings.get(key);
+    return voiding ? [200, { ...voiding, aceptada_por_sunat: true, sunat_description: "La Comunicacion de baja ha sido aceptada", sunat_responsecode: "0" }] : [400, { errors: "No existe", codigo: 24 }];
+  }
+  if (body.operacion === "generar_guia") {
+    if (nubefactGuides.has(key)) return [400, { errors: "Este documento ya existe en NubeFacT", codigo: 23 }];
+    if (!/^[TV]/.test(String(body.serie))) return [400, { errors: "Serie de guía inválida", codigo: 20 }];
+    if (!Array.isArray(body.items) || !body.items.length || !body.punto_de_partida_ubigeo || !body.punto_de_llegada_ubigeo || !(Number(body.peso_bruto_total) > 0)) {
+      return [400, { errors: "La guía no cumple con el formato establecido", codigo: 20 }];
+    }
+    if (body.tipo_de_comprobante === 7 && body.tipo_de_transporte === "01" && !body.transportista_documento_numero) return [400, { errors: "Falta el transportista", codigo: 20 }];
+    if ((body.tipo_de_comprobante === 8 || body.tipo_de_transporte === "02") && !body.transportista_placa_numero) return [400, { errors: "Falta la placa", codigo: 20 }];
+    stats.nubefactGuides += 1;
+    nubefactGuides.set(key, { tipo_de_comprobante: body.tipo_de_comprobante, serie: body.serie, numero: body.numero });
+    return [200, { ...nubefactGuides.get(key), aceptada_por_sunat: false, nota_importante: "Usa consultar_guia" }];
+  }
+  if (body.operacion === "consultar_guia") {
+    const guide = nubefactGuides.get(key);
+    return guide ? [200, { ...guide, aceptada_por_sunat: true, sunat_description: "La guía ha sido aceptada", enlace_del_pdf: `https://www.nubefact.com/guia/${key}.pdf` }] : [400, { errors: "No existe", codigo: 24 }];
+  }
   if (body.operacion !== "generar_comprobante") return [400, { errors: "Operación no soportada", codigo: 20 }];
   if (nubefactDocs.has(key)) return [400, { errors: "Este documento ya existe en NubeFacT", codigo: 23 }];
   const items = Array.isArray(body.items) ? body.items : [];
@@ -64,7 +117,7 @@ function nubefact(body) {
   if (body.tipo_de_comprobante === 1 && (body.cliente_tipo_de_documento !== "6" || !body.cliente_direccion)) {
     return [400, { errors: "La factura requiere RUC y dirección del cliente", codigo: 20 }];
   }
-  if (body.tipo_de_comprobante === 3 && !body.documento_que_se_modifica_serie) {
+  if ((body.tipo_de_comprobante === 3 || body.tipo_de_comprobante === 4) && !body.documento_que_se_modifica_serie) {
     return [400, { errors: "La nota de crédito requiere el documento que modifica", codigo: 20 }];
   }
   stats.nubefactIssued += 1;
@@ -122,6 +175,12 @@ const server = http.createServer(async (req, res) => {
     stats.ruc = 0;
     stats.nubefactIssued = 0;
     stats.nubefactQueries = 0;
+    stats.nubefactVoidings = 0;
+    stats.nubefactGuides = 0;
+    stats.apisperuTickets = 0;
+    nubefactVoidings.clear();
+    nubefactGuides.clear();
+    apisperuTickets.clear();
     stats.apisperuIssued = 0;
     stats.apisperuPdfs = 0;
     nubefactDocs.clear();

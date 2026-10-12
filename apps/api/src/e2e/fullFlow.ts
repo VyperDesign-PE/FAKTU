@@ -425,6 +425,78 @@ async function main() {
   // B001 x5 (online, offline, yape, cash, + factura F001) + nota de crédito BC01 = 6 emisiones
   assert.equal(nubefactStats.nubefactIssued, 6, "Each real document must reach Nubefact exactly once");
 
+  type ApiReceipt = { id: string; status: string; officialNumber: string; total: number; voided?: boolean; voidingBlockers?: string[]; documentType: string };
+  const today = new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10);
+  const byTx = (tx: string, token: string) => request<ApiReceipt>(`/v1/receipts/by-transaction/${encodeURIComponent(tx)}`, {}, token);
+
+  log("Nubefact: partial return (07), debit note, comunicación de baja and guía de remisión");
+  const yapeReceipt = await byTx(`e2e-yape-${suffix}`, tokenA);
+  const partialBody = { reasonCode: "07", description: "Devolvió una gaseosa", items: [{ lineIndex: 0, quantity: 1 }], clientTransactionId: `e2e-nc07-${suffix}` };
+  const partialReturn = await request<ApiReceipt>(`/v1/receipts/${yapeReceipt.id}/credit-notes`, { method: "POST", body: JSON.stringify(partialBody) }, tokenA);
+  assert.equal(partialReturn.status, "ACCEPTED");
+  assert.equal(partialReturn.officialNumber, "BC01-00000002");
+  assert.equal(partialReturn.total, 11.8);
+  const partialRepeat = await request<ApiReceipt>(`/v1/receipts/${yapeReceipt.id}/credit-notes`, { method: "POST", body: JSON.stringify(partialBody) }, tokenA);
+  assert.equal(partialRepeat.officialNumber, "BC01-00000002", "Same clientTransactionId must return the same note");
+  const tooMany = await rawRequest(`/v1/receipts/${yapeReceipt.id}/credit-notes`, { method: "POST", body: JSON.stringify({ ...partialBody, items: [{ lineIndex: 0, quantity: 2 }], clientTransactionId: `e2e-nc07b-${suffix}` }) }, tokenA);
+  assert.equal(tooMany.body.code, "EXCEEDS_QUANTITY");
+
+  const facturaReceipt = await byTx(`e2e-factura-ok-${suffix}`, tokenA);
+  const debit = await request<ApiReceipt>(`/v1/receipts/${facturaReceipt.id}/debit-notes`, {
+    method: "POST",
+    body: JSON.stringify({ reasonCode: "01", description: "Intereses por pago tardío", items: [{ name: "INTERESES POR MORA", quantity: 1, unitPrice: 5.9 }] })
+  }, tokenA);
+  assert.equal(debit.status, "ACCEPTED");
+  assert.equal(debit.documentType, "NOTA_DEBITO");
+  assert.equal(debit.officialNumber, "FD01-00000001");
+
+  const firstSale = await byTx(onlineTx, tokenA);
+  assert.deepEqual(firstSale.voidingBlockers, [], "A clean receipt issued today can be voided");
+  const baja = await rawRequest(`/v1/receipts/${firstSale.id}/baja`, { method: "POST", body: JSON.stringify({ reason: "No se entregó al cliente" }) }, tokenA);
+  assert.equal(baja.status, 202, "SUNAT answers a baja asynchronously");
+  const bajaVoiding = baja.body.voiding as { id: string; status: string; ticket: string };
+  assert.equal(bajaVoiding.status, "PENDING");
+  assert.ok(bajaVoiding.ticket);
+  const bajaRefreshed = await request<{ voiding: { status: string }; receipt: ApiReceipt }>(`/v1/voidings/${bajaVoiding.id}/refresh`, { method: "POST" }, tokenA);
+  assert.equal(bajaRefreshed.voiding.status, "ACCEPTED");
+  assert.equal(bajaRefreshed.receipt.voided, true);
+  const bajaAgain = await request<{ voiding: { id: string } }>(`/v1/receipts/${firstSale.id}/baja`, { method: "POST", body: JSON.stringify({ reason: "No se entregó al cliente" }) }, tokenA);
+  assert.equal(bajaAgain.voiding.id, bajaVoiding.id, "A baja is idempotent");
+  const noteAfterBaja = await rawRequest(`/v1/receipts/${firstSale.id}/credit-notes`, { method: "POST", body: JSON.stringify({ reasonCode: "09", amount: 1 }) }, tokenA);
+  assert.equal(noteAfterBaja.body.code, "VOIDED");
+
+  const guideBody = {
+    clientTransactionId: `e2e-gre-${suffix}`,
+    guideType: "REMITENTE",
+    relatedReceiptId: facturaReceipt.id,
+    data: {
+      recipient: { documentType: "6", documentNumber: E2E_RUC, name: E2E_RUC_NAME, address: "AV. E2E 123 LIMA" },
+      reasonCode: "01",
+      transportMode: "02",
+      transferDate: today,
+      grossWeight: 18.5,
+      weightUnit: "KGM",
+      packages: 2,
+      origin: { ubigeo: "150101", address: "AV. ALMACEN 100" },
+      destination: { ubigeo: "150122", address: "AV. CLIENTE 200" },
+      vehiclePlate: "ABC-444",
+      driver: { documentType: "1", documentNumber: "45678912", names: "JORGE", surnames: "LOPEZ", license: "Q45678912" },
+      items: [{ code: "e2e-product-1", description: "GASEOSA E2E x 24", quantity: 2, unit: "NIU" }]
+    }
+  };
+  const guide = await rawRequest("/v1/despatch-guides", { method: "POST", body: JSON.stringify(guideBody) }, tokenA);
+  assert.equal(guide.status, 202, "SUNAT accepts guides asynchronously");
+  assert.equal(guide.body.number, "T001-00000001");
+  const guideAccepted = await request<{ status: string; id: string }>(`/v1/despatch-guides/${guide.body.id}/refresh`, { method: "POST" }, tokenA);
+  assert.equal(guideAccepted.status, "ACCEPTED");
+  const guideShare = await request<{ pdfUrl: string }>(`/v1/despatch-guides/${guide.body.id}/share`, { method: "POST" }, tokenA);
+  assert.match(guideShare.pdfUrl, /^https:\/\/www\.nubefact\.com\/guia\//);
+  const invalidGuide = await rawRequest("/v1/despatch-guides", { method: "POST", body: JSON.stringify({ ...guideBody, clientTransactionId: `e2e-gre-bad-${suffix}`, data: { ...guideBody.data, vehiclePlate: undefined } }) }, tokenA);
+  assert.equal(invalidGuide.body.code, "VEHICLE_REQUIRED");
+  const nubefactSuite = await (await fetch(`${mockDocumentsBase}/stats`)).json() as { nubefactVoidings: number; nubefactGuides: number };
+  assert.equal(nubefactSuite.nubefactVoidings, 1);
+  assert.equal(nubefactSuite.nubefactGuides, 1);
+
   log("Practice mode: tenant without electronic billing uses isolated series");
   const practice = await request<{ status: string; officialNumber: string; providerCode: string }>("/v1/receipts", {
     method: "POST",
@@ -452,6 +524,26 @@ async function main() {
   assert.equal(Buffer.from(pdfBytes.slice(0, 4)).toString("ascii"), "%PDF");
   assert.match(Buffer.from(pdfBytes).toString("latin1"), /ENTORNO DE PRUEBA/, "Practice PDF must say it has no tax validity");
   assert.match(await (await fetch(practiceShare.viewUrl)).text(), /SIN VALIDEZ TRIBUTARIA/);
+  const practiceGuide = await request<{ status: string; number: string; id: string; practice: boolean }>("/v1/despatch-guides", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-gre-practice-${suffix}`,
+      guideType: "REMITENTE",
+      data: {
+        recipient: { documentType: "1", documentNumber: "12345678", name: "CLIENTE PRACTICA" },
+        reasonCode: "01", transportMode: "01", transferDate: today, grossWeight: 1, weightUnit: "KGM", packages: 1,
+        origin: { ubigeo: "150101", address: "AV. A 1" }, destination: { ubigeo: "150122", address: "AV. B 2" },
+        carrier: { documentNumber: "20100000001", name: "TRANSPORTES SAC" },
+        items: [{ description: "PRACTICA", quantity: 1, unit: "NIU" }]
+      }
+    })
+  }, tokenB);
+  assert.equal(practiceGuide.status, "ACCEPTED");
+  assert.equal(practiceGuide.number, "TZ01-00000001", "Practice guides use an isolated series");
+  const practiceGuideShare = await request<{ pdfUrl: string }>(`/v1/despatch-guides/${practiceGuide.id}/share`, { method: "POST" }, tokenB);
+  const practiceGuidePdf = Buffer.from(await (await fetch(practiceGuideShare.pdfUrl.replace(/^https?:\/\/[^/]+/, apiBase))).arrayBuffer()).toString("latin1");
+  assert.match(practiceGuidePdf, /GUIA DE REMISION REMITENTE/);
+  assert.match(practiceGuidePdf, /ENTORNO DE PRUEBA/);
 
   log("APIsPERU: full flow for a third business (pilot provider)");
   const ownerC = await register(`owner-c-${suffix}@example.test`);
@@ -505,7 +597,44 @@ async function main() {
   assert.equal(apisperuStats.apisperuIssued, 2, "Boleta and credit note must reach APIsPERU exactly once");
   assert.equal(apisperuStats.apisperuPdfs, 1);
 
-  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact -> APIsPERU -> practice mode -> rate limit");
+  log("APIsPERU: debit note, boleta baja through daily summary, and guía de remisión");
+  const saleC = (body: object) => request<ApiReceipt>("/v1/receipts", { method: "POST", body: JSON.stringify(body) }, tokenC);
+  const saleC2 = await saleC({ clientTransactionId: `e2e-apisperu-2-${suffix}`, temporaryNumber: "VT-C2", documentType: "BOLETA", total: 10, items: [{ id: "c3", name: "MOCHILA", quantity: 1, unitPrice: 10 }] });
+  const debitC = await request<ApiReceipt>(`/v1/receipts/${saleC2.id}/debit-notes`, { method: "POST", body: JSON.stringify({ reasonCode: "02", items: [{ name: "AJUSTE DE PRECIO", quantity: 1, unitPrice: 2 }] }) }, tokenC);
+  assert.equal(debitC.status, "ACCEPTED");
+  assert.equal(debitC.officialNumber, "BD01-1");
+  const saleC3 = await saleC({ clientTransactionId: `e2e-apisperu-3-${suffix}`, temporaryNumber: "VT-C3", documentType: "BOLETA", total: 4, items: [{ id: "c4", name: "BORRADOR", quantity: 2, unitPrice: 2 }] });
+  const bajaC = await rawRequest(`/v1/receipts/${saleC3.id}/baja`, { method: "POST", body: JSON.stringify({ reason: "Venta registrada por error" }) }, tokenC);
+  assert.equal(bajaC.status, 202);
+  const bajaCVoiding = bajaC.body.voiding as { id: string; kind: string; ticket: string };
+  assert.equal(bajaCVoiding.kind, "RESUMEN_BAJA", "Boletas are voided through a daily summary");
+  assert.match(bajaCVoiding.ticket, /^summary-/);
+  const bajaCDone = await request<{ voiding: { status: string } }>(`/v1/voidings/${bajaCVoiding.id}/refresh`, { method: "POST" }, tokenC);
+  assert.equal(bajaCDone.voiding.status, "ACCEPTED");
+
+  const guideC = await rawRequest("/v1/despatch-guides", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-gre-c-${suffix}`,
+      guideType: "REMITENTE",
+      data: {
+        recipient: { documentType: "1", documentNumber: "12345678", name: "ANA MARIA PRUEBA" },
+        reasonCode: "01", transportMode: "01", transferDate: today, grossWeight: 3, weightUnit: "KGM", packages: 1,
+        origin: { ubigeo: "150101", address: "AV. E2E 456" }, destination: { ubigeo: "150140", address: "JR. DESTINO 9" },
+        carrier: { documentNumber: "20100000001", name: "TRANSPORTES E2E SAC" },
+        items: [{ description: "CUADERNOS", quantity: 10, unit: "NIU" }]
+      }
+    })
+  }, tokenC);
+  assert.equal(guideC.status, 202);
+  assert.equal(guideC.body.number, "T001-00000001");
+  assert.match(String(guideC.body.ticket), /^despatch-/);
+  assert.equal((await request<{ status: string }>(`/v1/despatch-guides/${guideC.body.id}/refresh`, { method: "POST" }, tokenC)).status, "ACCEPTED");
+  const guideCShare = await request<{ pdfUrl: string }>(`/v1/despatch-guides/${guideC.body.id}/share`, { method: "POST" }, tokenC);
+  const guideCPdf = await fetch(guideCShare.pdfUrl.replace(/^https?:\/\/[^/]+/, apiBase));
+  assert.match(Buffer.from(await guideCPdf.arrayBuffer()).toString("latin1"), /APISPERU-GUIA T001-1/, "Guide PDF must be the official APIsPERU representation");
+
+  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact (NC parcial, ND, baja, guía) -> APIsPERU (ND, resumen de baja, guía) -> practice mode -> rate limit");
 }
 
 main()

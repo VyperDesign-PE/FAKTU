@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "../../db/client.js";
 import { upsertCustomer } from "../customers/customerRepository.js";
+import { isNoteType } from "../billing/contracts.js";
 import type {
   BillingDocumentType,
   BillingIssueResult,
@@ -10,7 +11,8 @@ import type {
 } from "../billing/contracts.js";
 import { IGV_PERCENT, priceItems } from "./pricing.js";
 import { getTenantBillingConfig } from "../billing/tenantBillingConfigRepository.js";
-import { isPracticeSeries, PRACTICE_SERIES } from "../billing/practiceMode.js";
+import { PRACTICE_SERIES } from "../billing/practiceMode.js";
+import type { TransactionSql } from "postgres";
 
 export type ReceiptStatus = "PENDIENTE" | "ENVIANDO" | "ACEPTADO" | "OBSERVADO" | "RECHAZADO" | "ERROR";
 
@@ -42,12 +44,19 @@ export type ReceiptInput = {
   paymentMethod?: PaymentMethod;
   /** Monto entregado por el cliente (solo efectivo), para calcular el vuelto. */
   amountReceived?: number;
-  /** Solo NOTA_CREDITO: comprobante que se anula. */
+  /** Solo notas de crédito/débito: comprobante que modifican. */
   relatedReceiptId?: string;
   relatedDocumentType?: SaleDocumentType;
-  creditNoteReason?: string;
-  /** Fuerza serie de práctica (por defecto: si el negocio usa el simulador). */
+  /** Motivo SUNAT (catálogo 09 / 10) y sustento de la nota. */
+  noteReasonCode?: string;
+  noteDescription?: string;
+  /** Fuerza modo práctica (por defecto: si el negocio usa el simulador). */
   practice?: boolean;
+  /**
+   * Validación dentro de la misma transacción que reserva el correlativo (por
+   * ejemplo, bloquear el comprobante original y verificar su saldo).
+   */
+  guard?: (tx: TransactionSql<Record<string, unknown>>) => Promise<void>;
 };
 
 export type ReceiptRecord = {
@@ -75,9 +84,16 @@ export type ReceiptRecord = {
   amountReceived?: number;
   changeAmount?: number;
   relatedReceiptId?: string;
-  creditNoteReason?: string;
-  /** Nota de crédito que anula este comprobante, si existe. */
+  noteReasonCode?: string;
+  noteDescription?: string;
+  practice: boolean;
+  /** Nota de crédito que anula este comprobante completo (motivos 01/02/06), si existe. */
   creditNote?: { id: string; status: ReceiptStatus; officialNumber?: string };
+  /** Suma de notas de crédito / débito no rechazadas que lo modifican. */
+  creditedTotal: number;
+  debitedTotal: number;
+  /** Comunicación de baja / resumen de baja, si existe. */
+  voiding?: { id: string; status: string; kind: string };
   providerCode?: string;
   providerDocumentId?: string;
   providerMessage?: string;
@@ -114,6 +130,13 @@ type ReceiptRow = {
   change_amount: string | number | null;
   related_receipt_id: string | null;
   credit_note_reason: string | null;
+  note_reason_code: string | null;
+  is_practice: boolean;
+  credited_total: string | number | null;
+  debited_total: string | number | null;
+  voiding_id: string | null;
+  voiding_status: string | null;
+  voiding_kind: string | null;
   credit_note_id: string | null;
   credit_note_status: ReceiptStatus | null;
   credit_note_number: string | null;
@@ -143,7 +166,10 @@ const receiptColumns = sql`
   r.subtotal, r.igv, r.total, r.sunat_status,
   r.customer_document_type, r.customer_document_number, r.customer_name, r.customer_address,
   r.payment_method, r.amount_received, r.change_amount, r.related_receipt_id, r.credit_note_reason,
+  r.note_reason_code, r.is_practice,
   nc.id as credit_note_id, nc.sunat_status as credit_note_status, nc.official_number as credit_note_number,
+  notes.credited_total, notes.debited_total,
+  rv.id as voiding_id, rv.status as voiding_status, rv.kind as voiding_kind,
   r.provider_code, r.provider_document_id, r.provider_message,
   r.provider_pdf_url, r.provider_xml_url, r.provider_cdr_url, r.provider_qr_data, r.provider_hash,
   r.attempt_count
@@ -151,13 +177,26 @@ const receiptColumns = sql`
 const receiptFrom = sql`
   receipts r
   left join lateral (
-    -- La nota de crédito vigente; si todas fueron rechazadas, la más reciente.
+    -- La nota de crédito total vigente; si todas fueron rechazadas, la más reciente.
     select id, sunat_status, official_number
     from receipts
-    where related_receipt_id = r.id and document_type = 'NOTA_CREDITO'
+    where related_receipt_id = r.id and document_type = 'NOTA_CREDITO' and note_reason_code in ('01', '02', '06')
     order by (sunat_status = 'RECHAZADO'), created_at desc
     limit 1
   ) nc on true
+  left join lateral (
+    select
+      coalesce(sum(total) filter (where document_type = 'NOTA_CREDITO'), 0) as credited_total,
+      coalesce(sum(total) filter (where document_type = 'NOTA_DEBITO'), 0) as debited_total
+    from receipts
+    where related_receipt_id = r.id and sunat_status <> 'RECHAZADO'
+  ) notes on true
+  left join lateral (
+    select id, status, kind from receipt_voidings
+    where receipt_id = r.id
+    order by (status = 'RECHAZADO'), created_at desc
+    limit 1
+  ) rv on true
 `;
 
 const optionalNumber = (value: string | number | null) => (value === null ? undefined : Number(value));
@@ -188,7 +227,12 @@ function mapReceipt(row: ReceiptRow): ReceiptRecord {
     amountReceived: optionalNumber(row.amount_received),
     changeAmount: optionalNumber(row.change_amount),
     relatedReceiptId: row.related_receipt_id ?? undefined,
-    creditNoteReason: row.credit_note_reason ?? undefined,
+    noteReasonCode: row.note_reason_code ?? undefined,
+    noteDescription: row.credit_note_reason ?? undefined,
+    practice: row.is_practice,
+    creditedTotal: Number(row.credited_total ?? 0),
+    debitedTotal: Number(row.debited_total ?? 0),
+    voiding: row.voiding_id ? { id: row.voiding_id, status: row.voiding_status ?? "PENDIENTE", kind: row.voiding_kind ?? "COMUNICACION_BAJA" } : undefined,
     creditNote: row.credit_note_id
       ? { id: row.credit_note_id, status: row.credit_note_status ?? "PENDIENTE", officialNumber: row.credit_note_number ?? undefined }
       : undefined,
@@ -206,11 +250,16 @@ function mapReceipt(row: ReceiptRow): ReceiptRecord {
 
 function defaultSeries(documentType: BillingDocumentType, relatedDocumentType?: SaleDocumentType, practice = false) {
   if (practice) return PRACTICE_SERIES[documentType];
+  // Las notas usan serie F... para facturas y B... para boletas.
   if (documentType === "NOTA_CREDITO") {
-    // Las notas de crédito usan serie F... para facturas y B... para boletas.
     return relatedDocumentType === "FACTURA"
       ? process.env.DEFAULT_NC_FACTURA_SERIES ?? "FC01"
       : process.env.DEFAULT_NC_BOLETA_SERIES ?? "BC01";
+  }
+  if (documentType === "NOTA_DEBITO") {
+    return relatedDocumentType === "FACTURA"
+      ? process.env.DEFAULT_ND_FACTURA_SERIES ?? "FD01"
+      : process.env.DEFAULT_ND_BOLETA_SERIES ?? "BD01";
   }
   return documentType === "BOLETA"
     ? process.env.DEFAULT_BOLETA_SERIES ?? "B001"
@@ -280,7 +329,7 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
   if (existing) return { receipt: existing, created: false };
 
   let customerId: string | undefined;
-  if (input.documentType !== "NOTA_CREDITO" && input.customer?.documentType && input.customer.documentNumber && input.customer.name) {
+  if (input.documentType !== "NOTA_CREDITO" && input.documentType !== "NOTA_DEBITO" && input.customer?.documentType && input.customer.documentNumber && input.customer.name) {
     const customer = await upsertCustomer({
       tenantId: input.tenantId,
       documentType: input.customer.documentType,
@@ -313,6 +362,7 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
         limit 1
       `;
       if (duplicate[0]) return duplicate[0].id;
+      if (input.guard) await input.guard(tx);
 
       await tx`
         insert into document_series (id, tenant_id, document_type, series, last_correlative)
@@ -338,7 +388,8 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
           document_type, series, correlative, issue_date, currency,
           subtotal, igv, total, igv_rate, sunat_status,
           customer_document_type, customer_document_number, customer_name, customer_address,
-          payment_method, amount_received, change_amount, related_receipt_id, credit_note_reason
+          payment_method, amount_received, change_amount, related_receipt_id, credit_note_reason,
+          note_reason_code, is_practice
         ) values (
           ${receiptId}, ${input.tenantId}, ${customerId ?? null}, ${input.clientTransactionId}, ${input.temporaryNumber},
           ${input.documentType}, ${series}, ${correlative}, now(), 'PEN',
@@ -346,7 +397,8 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
           ${input.customer?.documentType ?? null}, ${input.customer?.documentNumber ?? null},
           ${input.customer?.name ?? null}, ${input.customer?.address ?? null},
           ${paymentMethod}, ${amountReceived ?? null}, ${changeAmount ?? null},
-          ${input.relatedReceiptId ?? null}, ${input.creditNoteReason ?? null}
+          ${input.relatedReceiptId ?? null}, ${input.noteDescription ?? null},
+          ${input.noteReasonCode ?? null}, ${practice}
         )
       `;
 
@@ -377,61 +429,6 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
     }
     throw error;
   }
-}
-
-export class CreditNoteError extends Error {
-  constructor(readonly code: string, message: string, readonly statusCode = 409) {
-    super(message);
-    this.name = "CreditNoteError";
-  }
-}
-
-/**
- * Prepara la nota de crédito que anula por completo un comprobante aceptado
- * (motivo SUNAT 01 "Anulación de la operación").
- *
- * Es idempotente: el clientTransactionId se deriva del comprobante original,
- * así que repetir la anulación devuelve la misma nota de crédito.
- */
-export async function prepareCreditNote(tenantId: string, originalId: string, reason: string) {
-  const original = await getReceiptById(tenantId, originalId);
-  if (!original) throw new CreditNoteError("NOT_FOUND", "Comprobante no encontrado", 404);
-  if (original.documentType === "NOTA_CREDITO") throw new CreditNoteError("NOT_VOIDABLE", "Una nota de crédito no se puede anular desde FAKTU.");
-  if (original.creditNote && original.creditNote.status !== "RECHAZADO") {
-    return prepareReceiptForExistingCreditNote(tenantId, original.creditNote.id);
-  }
-  if (original.status !== "ACEPTADO") {
-    throw new CreditNoteError("NOT_ACCEPTED", "Solo se pueden anular comprobantes aceptados por SUNAT.");
-  }
-
-  // Si SUNAT rechazó una nota anterior, el nuevo intento usa otra clave.
-  const [{ rejected }] = await sql<{ rejected: number }[]>`
-    select count(*)::int as rejected from receipts
-    where tenant_id = ${tenantId} and related_receipt_id = ${original.id}
-      and document_type = 'NOTA_CREDITO' and sunat_status = 'RECHAZADO'
-  `;
-
-  return prepareReceipt({
-    tenantId,
-    clientTransactionId: rejected ? `nc-${original.id}-r${rejected}` : `nc-${original.id}`,
-    temporaryNumber: `NC-${original.series}-${original.correlative}`,
-    documentType: "NOTA_CREDITO",
-    customer: original.customer,
-    items: original.items ?? [],
-    total: original.total,
-    paymentMethod: original.paymentMethod,
-    relatedReceiptId: original.id,
-    relatedDocumentType: original.documentType,
-    creditNoteReason: reason,
-    // La nota de crédito sigue el modo del comprobante que anula.
-    practice: isPracticeSeries(original.series)
-  });
-}
-
-async function prepareReceiptForExistingCreditNote(tenantId: string, creditNoteId: string) {
-  const receipt = await getReceiptById(tenantId, creditNoteId);
-  if (!receipt) throw new CreditNoteError("NOT_FOUND", "Nota de crédito no encontrada", 404);
-  return { receipt, created: false };
 }
 
 const FINAL_STATUSES: ReceiptStatus[] = ["ACEPTADO", "RECHAZADO"];
@@ -525,9 +522,9 @@ export async function applyBillingResult(tenantId: string, receiptId: string, re
 export async function buildBillingCommand(receipt: ReceiptRecord): Promise<IssueDocumentCommand> {
   const items = receipt.items ?? await getReceiptItems(receipt.id);
   let relatedDocument: IssueDocumentCommand["relatedDocument"];
-  if (receipt.documentType === "NOTA_CREDITO" && receipt.relatedReceiptId) {
+  if (isNoteType(receipt.documentType) && receipt.relatedReceiptId) {
     const related = await getReceiptById(receipt.tenantId, receipt.relatedReceiptId);
-    if (!related || related.documentType === "NOTA_CREDITO") throw new Error("No encontramos el comprobante que anula esta nota de crédito.");
+    if (!related || isNoteType(related.documentType)) throw new Error("No encontramos el comprobante que modifica esta nota.");
     relatedDocument = { documentType: related.documentType, series: related.series, correlative: related.correlative };
   }
   return {
@@ -551,9 +548,10 @@ export async function buildBillingCommand(receipt: ReceiptRecord): Promise<Issue
     total: receipt.total,
     paymentMethod: receipt.paymentMethod,
     relatedDocument,
-    creditNoteReason: receipt.documentType === "NOTA_CREDITO"
-      ? { code: "01", description: receipt.creditNoteReason || "ANULACIÓN DE LA OPERACIÓN" }
-      : undefined
+    noteReason: isNoteType(receipt.documentType)
+      ? { code: receipt.noteReasonCode ?? "01", description: receipt.noteDescription || "ANULACION DE LA OPERACION" }
+      : undefined,
+    practice: receipt.practice
   };
 }
 
@@ -588,9 +586,18 @@ export function receiptToApi(receipt: ReceiptRecord) {
     amountReceived: receipt.amountReceived,
     changeAmount: receipt.changeAmount,
     relatedReceiptId: receipt.relatedReceiptId,
-    creditNoteReason: receipt.creditNoteReason,
-    /** true cuando una nota de crédito aceptada anuló este comprobante. */
-    voided: receipt.creditNote?.status === "ACEPTADO",
+    noteReasonCode: receipt.noteReasonCode,
+    noteDescription: receipt.noteDescription,
+    /** Compatibilidad con versiones anteriores de la app. */
+    creditNoteReason: receipt.noteDescription,
+    practice: receipt.practice,
+    /** true cuando una nota de crédito total o una baja aceptada anuló este comprobante. */
+    voided: receipt.creditNote?.status === "ACEPTADO" || receipt.voiding?.status === "ACEPTADO",
+    creditedTotal: receipt.creditedTotal,
+    debitedTotal: receipt.debitedTotal,
+    /** Saldo que aún puede acreditarse con notas de crédito. */
+    creditableBalance: Math.max(0, Math.round((receipt.total + receipt.debitedTotal - receipt.creditedTotal) * 100) / 100),
+    voiding: receipt.voiding,
     creditNote: receipt.creditNote
       ? { id: receipt.creditNote.id, status: apiStatus(receipt.creditNote.status), officialNumber: receipt.creditNote.officialNumber }
       : undefined,

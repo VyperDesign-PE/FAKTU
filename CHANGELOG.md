@@ -1,3 +1,54 @@
+# 0.16.0 - Todos los documentos: notas, bajas y guías de remisión
+
+**Notas de crédito por motivo (catálogo SUNAT 09)**
+- 01 anulación total, 02 error en el RUC (solo facturas), 06 devolución total, 07 devolución por ítem y 09 disminución en el valor.
+- Saldo acreditable controlado. Las cantidades y el saldo se validan en la misma transacción, con el comprobante bloqueado, así que devoluciones simultáneas no acreditan de más (probado).
+- Una sola nota "total" vigente; idempotencia por `clientTransactionId`.
+
+**Notas de débito (catálogo SUNAT 10)**
+- 01 intereses por mora, 02 aumento en el valor, 03 penalidades.
+- Series BD01 / FD01.
+- Suman al cierre de caja y al saldo acreditable.
+
+**Comunicación de baja**
+- Facturas: comunicación de baja (RA).
+- Boletas: resumen diario con estado 3 (RC).
+- Solo para comprobantes aceptados, sin notas y dentro del plazo (`VOIDING_MAX_DAYS`, 7 días).
+- SUNAT responde con un ticket: el servidor lo consulta y nunca reenvía si ya hay ticket.
+- Idempotente.
+
+**Resúmenes diarios de boletas**
+- Nubefact los gestiona al enviar las boletas.
+- Con APIsPERU, FAKTU genera el resumen de baja (`summary/send`).
+
+**Guías de remisión remitente (09) y transportista (31)**
+- Transporte público (empresa de transportes) o privado (vehículo y conductor).
+- Motivos del catálogo 20 y comprobante relacionado.
+- Aceptación asíncrona con consulta automática.
+- PDF oficial: enlace de Nubefact o `despatch/pdf` de APIsPERU.
+
+**Adaptadores**
+- Nubefact: `generar_anulacion`/`consultar_anulacion` y `generar_guia`/`consultar_guia`, según sus manuales.
+- APIsPERU: `voided/send`, `summary/send`, `despatch/send` y sus consultas de ticket, según el OpenAPI y sus ejemplos oficiales.
+
+**Modo práctica**
+- Ahora es una marca explícita (`is_practice`), porque las guías reales también empiezan con "T".
+- Series de práctica TD01 / TZ01 / VZ01.
+
+**App**
+- Panel "Corregir o anular" en el detalle de la venta: devolución por producto, descuento, nota de débito y baja (solo cuando corresponde).
+- Pantallas de guías de remisión, prellenadas desde una venta.
+- El cierre de caja muestra bajas y notas de débito.
+
+**Correcciones**
+- La fecha de traslado se enviaba un día antes a APIsPERU (conversión UTC).
+- Al devolver más de lo vendido, se muestra el error específico.
+
+**Pruebas**
+- Adaptadores: Nubefact 20, APIsPERU 23.
+- Integración con PostgreSQL: 15, incluida concurrencia.
+- E2E con simuladores HTTP de ambos proveedores: NC parcial, ND, baja y guía.
+
 # 0.15.0 - APIsPERU como proveedor del piloto
 
 - Adaptador APIsPERU verificado contra su OpenAPI oficial (`/doc/swagger`):

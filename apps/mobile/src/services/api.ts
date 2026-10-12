@@ -133,6 +133,7 @@ export async function getRemoteBusiness(): Promise<BusinessProfile> {
     businessName?: string;
     tradeName?: string;
     address?: string;
+    ubigeo?: string;
     phone?: string;
     taxpayerStatus?: string;
     onboardingComplete?: boolean;
@@ -142,6 +143,7 @@ export async function getRemoteBusiness(): Promise<BusinessProfile> {
     businessName: business.businessName,
     tradeName: business.tradeName,
     address: business.address,
+    ubigeo: business.ubigeo,
     phone: business.phone,
     taxpayerStatus: business.taxpayerStatus,
     onboardingComplete: Boolean(business.onboardingComplete)
@@ -181,8 +183,18 @@ export type RemoteReceipt = {
   id: string;
   clientTransactionId: string;
   temporaryNumber: string;
-  documentType: "BOLETA" | "FACTURA" | "NOTA_CREDITO";
+  documentType: "BOLETA" | "FACTURA" | "NOTA_CREDITO" | "NOTA_DEBITO";
   paymentMethod?: PaymentMethod;
+  noteReasonCode?: string;
+  noteDescription?: string;
+  practice?: boolean;
+  creditedTotal?: number;
+  debitedTotal?: number;
+  /** Saldo que aún puede acreditarse con notas de crédito. */
+  creditableBalance?: number;
+  voiding?: { id: string; status: string; kind: string };
+  /** Motivos por los que no puede darse de baja (vacío = sí puede). */
+  voidingBlockers?: string[];
   amountReceived?: number;
   changeAmount?: number;
   relatedReceiptId?: string;
@@ -362,6 +374,8 @@ export type DailyClose = {
   pending: { count: number; total: number };
   rejected: { count: number; total: number };
   creditNotes: { count: number; total: number };
+  debitNotes?: { count: number; total: number };
+  voidings?: { count: number; total: number };
   netTotal: number;
   expectedCash: number;
   byDocumentType: { BOLETA: { count: number; total: number }; FACTURA: { count: number; total: number } };
@@ -378,4 +392,138 @@ export async function createSalesRegisterLink(month: string) {
     method: "POST",
     body: JSON.stringify({ month })
   }));
+}
+
+// ---------- Notas de crédito / débito y bajas ----------
+
+export const CREDIT_NOTE_OPTIONS = [
+  { code: "01", label: "Anular toda la venta" },
+  { code: "07", label: "Devolución de productos" },
+  { code: "09", label: "Descuento o rebaja" },
+  { code: "02", label: "Error en el RUC" },
+  { code: "06", label: "Devolución total" }
+] as const;
+export type CreditNoteCode = (typeof CREDIT_NOTE_OPTIONS)[number]["code"];
+
+export const DEBIT_NOTE_OPTIONS = [
+  { code: "01", label: "Intereses por mora" },
+  { code: "02", label: "Aumento en el valor" },
+  { code: "03", label: "Penalidad u otro concepto" }
+] as const;
+export type DebitNoteCode = (typeof DEBIT_NOTE_OPTIONS)[number]["code"];
+
+async function receiptOrThrow(response: Response, fallback: string): Promise<RemoteReceipt> {
+  const body = await response.json().catch(() => ({})) as Partial<RemoteReceipt> & { message?: string };
+  if (body.status && body.id) return body as RemoteReceipt;
+  throw new Error(body.message ?? fallback);
+}
+
+export async function createCreditNote(receiptId: string, input: {
+  reasonCode: CreditNoteCode;
+  description?: string;
+  items?: Array<{ lineIndex: number; quantity: number }>;
+  amount?: number;
+  clientTransactionId?: string;
+}) {
+  return receiptOrThrow(
+    await authorizedFetch(`/v1/receipts/${encodeURIComponent(receiptId)}/credit-notes`, { method: "POST", body: JSON.stringify(input) }),
+    "No pudimos emitir la nota de crédito."
+  );
+}
+
+export async function createDebitNote(receiptId: string, input: {
+  reasonCode: DebitNoteCode;
+  description?: string;
+  items: Array<{ name: string; quantity: number; unitPrice: number }>;
+  clientTransactionId?: string;
+}) {
+  return receiptOrThrow(
+    await authorizedFetch(`/v1/receipts/${encodeURIComponent(receiptId)}/debit-notes`, { method: "POST", body: JSON.stringify(input) }),
+    "No pudimos emitir la nota de débito."
+  );
+}
+
+export type RemoteVoiding = { id: string; receiptId: string; kind: string; reason: string; status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR"; ticket?: string; message?: string };
+
+async function voidingOrThrow(response: Response) {
+  const body = await response.json().catch(() => ({})) as { voiding?: RemoteVoiding; message?: string };
+  if (body.voiding) return body.voiding;
+  throw new Error(body.message ?? "No pudimos dar de baja el comprobante.");
+}
+
+/** Comunicación de baja (facturas) o resumen de baja (boletas). SUNAT confirma en minutos. */
+export async function requestBaja(receiptId: string, reason: string) {
+  return voidingOrThrow(await authorizedFetch(`/v1/receipts/${encodeURIComponent(receiptId)}/baja`, { method: "POST", body: JSON.stringify({ reason }) }));
+}
+
+export async function refreshVoiding(voidingId: string) {
+  return voidingOrThrow(await authorizedFetch(`/v1/voidings/${encodeURIComponent(voidingId)}/refresh`, { method: "POST" }));
+}
+
+// ---------- Guías de remisión ----------
+
+export type GuideParty = { documentType: "6" | "1" | "4" | "7"; documentNumber: string; name: string; address?: string };
+export type GuideInput = {
+  clientTransactionId: string;
+  guideType: "REMITENTE" | "TRANSPORTISTA";
+  relatedReceiptId?: string;
+  data: {
+    recipient: GuideParty;
+    shipper?: GuideParty;
+    reasonCode?: string;
+    reasonDescription?: string;
+    transportMode?: "01" | "02";
+    transferDate: string;
+    grossWeight: number;
+    weightUnit: "KGM" | "TNE";
+    packages?: number;
+    origin: { ubigeo: string; address: string };
+    destination: { ubigeo: string; address: string };
+    carrier?: { documentNumber: string; name: string; mtcNumber?: string };
+    vehiclePlate?: string;
+    driver?: { documentType: "1" | "4" | "7"; documentNumber: string; names: string; surnames: string; license: string };
+    notes?: string;
+    items: Array<{ code?: string; description: string; quantity: number; unit: string }>;
+  };
+};
+export type RemoteGuide = {
+  id: string;
+  guideType: "REMITENTE" | "TRANSPORTISTA";
+  number: string;
+  issueDate: string;
+  transferDate: string;
+  status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR";
+  message?: string;
+  practice?: boolean;
+  data: GuideInput["data"];
+};
+
+async function guideOrThrow(response: Response) {
+  const body = await response.json().catch(() => ({})) as Partial<RemoteGuide> & { message?: string };
+  if (body.id && body.status) return body as RemoteGuide;
+  throw new Error(body.message ?? "No pudimos procesar la guía de remisión.");
+}
+
+export async function createGuide(input: GuideInput) {
+  return guideOrThrow(await authorizedFetch("/v1/despatch-guides", { method: "POST", body: JSON.stringify(input) }));
+}
+
+export async function listGuides() {
+  return json<RemoteGuide[]>(await authorizedFetch("/v1/despatch-guides"));
+}
+
+export async function getGuide(id: string) {
+  return json<RemoteGuide>(await authorizedFetch(`/v1/despatch-guides/${encodeURIComponent(id)}`));
+}
+
+export async function refreshGuide(id: string) {
+  return guideOrThrow(await authorizedFetch(`/v1/despatch-guides/${encodeURIComponent(id)}/refresh`, { method: "POST" }));
+}
+
+export async function shareGuide(id: string) {
+  return json<{ pdfUrl: string; number: string }>(await authorizedFetch(`/v1/despatch-guides/${encodeURIComponent(id)}/share`, { method: "POST" }));
+}
+
+export function newTransactionId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }

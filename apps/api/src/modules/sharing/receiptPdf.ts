@@ -42,15 +42,17 @@ function wrap(value: string, max = 78) {
   return lines.length ? lines : [""];
 }
 
-function buildContent(receipt: ReceiptRecord, business: BusinessRecord) {
-  const lines: Array<{ text: string; size?: number; bold?: boolean; gap?: number }> = [];
+export type PdfLine = { text: string; size?: number; bold?: boolean; gap?: number };
+
+function receiptLines(receipt: ReceiptRecord, business: BusinessRecord) {
+  const lines: PdfLine[] = [];
   const businessName = business.tradeName ?? business.businessName ?? "Mi negocio";
   lines.push({ text: businessName, size: 15, bold: true, gap: 18 });
   if (business.businessName && business.businessName !== businessName) lines.push({ text: business.businessName, size: 9 });
   if (business.ruc) lines.push({ text: `RUC: ${business.ruc}`, size: 9 });
   if (business.address) wrap(business.address).forEach((text) => lines.push({ text, size: 8 }));
   lines.push({ text: "", gap: 8 });
-  lines.push({ text: `${receipt.documentType === "NOTA_CREDITO" ? "NOTA DE CREDITO" : receipt.documentType} ELECTRONICA`, size: 14, bold: true, gap: 16 });
+  lines.push({ text: `${{ NOTA_CREDITO: "NOTA DE CREDITO", NOTA_DEBITO: "NOTA DE DEBITO", BOLETA: "BOLETA DE VENTA", FACTURA: "FACTURA" }[receipt.documentType]} ELECTRONICA`, size: 14, bold: true, gap: 16 });
   lines.push({ text: receipt.officialNumber ?? `${receipt.series}-${String(receipt.correlative).padStart(8, "0")}`, size: 13, bold: true, gap: 16 });
   lines.push({ text: `Fecha de emision: ${formatDate(receipt.issueDate)}`, size: 9 });
   lines.push({ text: `Moneda: PEN`, size: 9 });
@@ -80,7 +82,14 @@ function buildContent(receipt: ReceiptRecord, business: BusinessRecord) {
   lines.push({ text: "", gap: 8 });
   lines.push({ text: "Representacion impresa del comprobante electronico.", size: 8 });
   if (receipt.providerCode === "mock") lines.push({ text: "ENTORNO DE PRUEBA - NO TIENE VALIDEZ TRIBUTARIA.", size: 8, bold: true });
+  return lines;
+}
 
+export function wrapText(value: string, max = 78) {
+  return wrap(value, max);
+}
+
+function buildContent(lines: PdfLine[]) {
   let y = 800;
   const commands: string[] = ["BT"];
   for (const line of lines) {
@@ -96,7 +105,12 @@ function buildContent(receipt: ReceiptRecord, business: BusinessRecord) {
 }
 
 export function renderReceiptPdf(receipt: ReceiptRecord, business: BusinessRecord) {
-  const content = buildContent(receipt, business);
+  return renderLinesPdf(receiptLines(receipt, business));
+}
+
+/** PDF de una página (A4) a partir de líneas de texto. */
+export function renderLinesPdf(lines: PdfLine[]) {
+  const content = buildContent(lines);
   const objects: Buffer[] = [];
   objects[1] = Buffer.from("<< /Type /Catalog /Pages 2 0 R >>", "ascii");
   objects[2] = Buffer.from("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "ascii");

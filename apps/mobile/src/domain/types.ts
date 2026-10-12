@@ -71,6 +71,8 @@ export type BusinessProfile = {
   businessName?: string;
   tradeName?: string;
   address?: string;
+  /** Código de ubigeo (6 dígitos) del domicilio fiscal; punto de partida por defecto de las guías. */
+  ubigeo?: string;
   taxpayerStatus?: string;
   sunatUser?: string;
   onboardingComplete: boolean;

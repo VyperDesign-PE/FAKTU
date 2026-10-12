@@ -44,6 +44,9 @@ export type RootStackParamList = {
   ReceiptHistory: undefined;
   ReceiptDetail: { clientTransactionId: string };
   CashClose: undefined;
+  Guides: undefined;
+  GuideForm: { receiptClientTransactionId?: string } | undefined;
+  GuideDetail: { id: string };
   BillingSettings: undefined;
   SystemStatus: undefined;
   Business: undefined;

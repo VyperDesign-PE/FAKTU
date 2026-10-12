@@ -2,8 +2,12 @@ import type { BillingProvider } from "../BillingProvider.js";
 import type {
   BillingIssueResult,
   BillingIssuer,
+  DespatchCommand,
+  DespatchResult,
   IssueDocumentCommand,
-  ProviderHealth
+  ProviderHealth,
+  VoidingCommand,
+  VoidingResult
 } from "../contracts.js";
 import { amountInWordsPen } from "../amountInWords.js";
 import { IGV_PERCENT, priceItems } from "../../receipts/pricing.js";
@@ -96,7 +100,7 @@ function companyPayload(issuer: BillingIssuer) {
   };
 }
 
-const SUNAT_DOC_TYPE = { FACTURA: "01", BOLETA: "03", NOTA_CREDITO: "07" } as const;
+const SUNAT_DOC_TYPE = { FACTURA: "01", BOLETA: "03", NOTA_CREDITO: "07", NOTA_DEBITO: "08" } as const;
 
 export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: BillingIssuer) {
   if (!/^\d{11}$/.test(issuer.ruc)) throw new Error("El negocio debe tener un RUC valido antes de emitir.");
@@ -104,8 +108,9 @@ export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: Billi
   if (command.documentType === "FACTURA" && command.customer?.documentType !== "RUC") {
     throw new Error("Para emitir una factura el cliente debe tener RUC.");
   }
-  if (command.documentType === "NOTA_CREDITO" && (!command.relatedDocument || !command.creditNoteReason)) {
-    throw new Error("La nota de crédito debe indicar el comprobante que modifica y el motivo.");
+  const isNote = command.documentType === "NOTA_CREDITO" || command.documentType === "NOTA_DEBITO";
+  if (isNote && (!command.relatedDocument || !command.noteReason)) {
+    throw new Error("La nota debe indicar el comprobante que modifica y el motivo.");
   }
 
   // Detalle y cabecera salen del mismo cálculo, así la suma de líneas cuadra
@@ -136,17 +141,17 @@ export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: Billi
   return {
     ublVersion: "2.1",
     // tipoOperacion (catálogo 51) solo existe en facturas y boletas, no en notas.
-    ...(command.documentType === "NOTA_CREDITO" ? {} : { tipoOperacion: "0101" }),
+    ...(isNote ? {} : { tipoOperacion: "0101" }),
     tipoDoc: SUNAT_DOC_TYPE[command.documentType],
     serie: command.series,
     correlativo: String(command.correlative),
     fechaEmision: formatLimaIso(command.issueDate),
-    ...(command.documentType === "NOTA_CREDITO"
+    ...(isNote
       ? {
           tipDocAfectado: SUNAT_DOC_TYPE[command.relatedDocument!.documentType],
           numDocfectado: `${command.relatedDocument!.series}-${command.relatedDocument!.correlative}`,
-          codMotivo: command.creditNoteReason!.code,
-          desMotivo: command.creditNoteReason!.description
+          codMotivo: command.noteReason!.code,
+          desMotivo: command.noteReason!.description
         }
       : { formaPago: { moneda: command.currency, tipo: "Contado" } }),
     tipoMoneda: command.currency,
@@ -214,6 +219,161 @@ export function classifySunatResult(result?: ApiPeruSunatResponse | ApiPeruStatu
   return "PENDING";
 }
 
+// ---------- Comunicación de baja / resumen de baja ----------
+
+type ApiPeruSummaryResponse = {
+  xml?: string;
+  hash?: string;
+  sunatResponse?: { success?: boolean; ticket?: string; error?: { code?: string; message?: string } };
+};
+
+/** Fecha AAAA-MM-DD (o ISO) a medianoche de Lima, como en los ejemplos oficiales. */
+function limaMidnight(value: string) {
+  // Una fecha calendario (AAAA-MM-DD) ya es fecha de Lima: no se convierte
+  // desde UTC (eso la correría un día hacia atrás).
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : formatLimaIso(value).slice(0, 10);
+  return `${day}T00:00:00-05:00`;
+}
+
+const CUSTOMER_ID_TYPE = { DNI: "1", RUC: "6" } as const;
+
+/**
+ * Facturas (y sus notas): comunicación de baja (voided/send).
+ * Boletas: resumen diario con estado "3" = anulado (summary/send).
+ */
+export function mapVoidingToApiPeru(command: VoidingCommand, issuer: BillingIssuer) {
+  const doc = command.document;
+  const correlativo = String(command.correlative).padStart(3, "0");
+  if (command.kind === "COMUNICACION_BAJA") {
+    return {
+      path: "voided/send",
+      body: {
+        correlativo,
+        fecGeneracion: limaMidnight(doc.issueDate),
+        fecComunicacion: limaMidnight(command.communicationDate),
+        company: companyPayload(issuer),
+        details: [{
+          tipoDoc: SUNAT_DOC_TYPE[doc.documentType],
+          serie: doc.series,
+          correlativo: String(doc.correlative),
+          desMotivoBaja: command.reason.toUpperCase().slice(0, 100)
+        }]
+      }
+    };
+  }
+  const priced = { subtotal: doc.subtotal, igv: doc.igv, total: doc.total };
+  return {
+    path: "summary/send",
+    body: {
+      fecGeneracion: limaMidnight(doc.issueDate),
+      fecResumen: limaMidnight(command.communicationDate),
+      correlativo,
+      moneda: "PEN",
+      company: companyPayload(issuer),
+      details: [{
+        tipoDoc: SUNAT_DOC_TYPE[doc.documentType],
+        serieNro: `${doc.series}-${doc.correlative}`,
+        estado: "3",
+        clienteTipo: doc.customer?.documentNumber ? CUSTOMER_ID_TYPE[doc.customer.documentType ?? "DNI"] : "0",
+        clienteNro: doc.customer?.documentNumber ?? "00000000",
+        total: priced.total,
+        mtoOperGravadas: priced.subtotal,
+        mtoIGV: priced.igv
+      }]
+    }
+  };
+}
+
+/** Respuesta de envío de baja/resumen/guía: un ticket para consultar después. */
+function interpretTicketResponse<T extends VoidingResult | DespatchResult>(payload: ApiPeruSummaryResponse | ValidationError[], httpStatus: number, what: string): T {
+  if (Array.isArray(payload)) {
+    return { providerCode: "apisperu", status: "REJECTED", message: messageFromResponse(payload, `APIsPERU rechazó la ${what}.`), rawResponse: payload } as T;
+  }
+  const sunat = payload.sunatResponse;
+  if (sunat?.success && sunat.ticket) {
+    return { providerCode: "apisperu", status: "PENDING", ticket: sunat.ticket, message: `${what[0].toUpperCase()}${what.slice(1)} enviada a SUNAT (ticket ${sunat.ticket}).`, rawResponse: payload } as T;
+  }
+  const status = httpStatus >= 500 ? "PENDING" : classifySunatResult(sunat as ApiPeruSunatResponse);
+  return {
+    providerCode: "apisperu",
+    status,
+    message: sunat?.error?.message ? `${sunat.error.message}${sunat.error.code ? ` (código SUNAT ${sunat.error.code})` : ""}` : `APIsPERU no devolvió ticket para la ${what} (HTTP ${httpStatus}).`,
+    rawResponse: payload
+  } as T;
+}
+
+/**
+ * Estado de un ticket (voided/status, summary/status, despatch/status).
+ * Solo un CDR explícito decide; "98" (en proceso) o sin CDR sigue pendiente.
+ */
+function interpretTicketStatus<T extends VoidingResult | DespatchResult>(payload: ApiPeruStatusResponse, ticket: string): T {
+  const cdr = payload.cdrResponse;
+  if (cdr) {
+    const status = classifySunatResult(payload);
+    return { providerCode: "apisperu", status, ticket, message: messageFromResponse(payload, status === "ACCEPTED" ? "Aceptado por SUNAT." : "Rechazado por SUNAT."), rawResponse: payload } as T;
+  }
+  if (payload.code === "99" && payload.error?.code && /^\d+$/.test(payload.error.code) && Number(payload.error.code) >= 1000) {
+    return { providerCode: "apisperu", status: "REJECTED", ticket, message: messageFromResponse(payload, "SUNAT procesó el ticket con errores."), rawResponse: payload } as T;
+  }
+  return { providerCode: "apisperu", status: "PENDING", ticket, message: messageFromResponse(payload, "SUNAT aún está procesando el ticket."), rawResponse: payload } as T;
+}
+
+// ---------- Guías de remisión (Despatch, versión 2022) ----------
+
+const GUIDE_DOC_TYPE = { REMITENTE: "09", TRANSPORTISTA: "31" } as const;
+const TRANSFER_REASONS: Record<string, string> = {
+  "01": "VENTA", "02": "COMPRA", "03": "VENTA CON ENTREGA A TERCEROS", "04": "TRASLADO ENTRE ESTABLECIMIENTOS DE LA MISMA EMPRESA",
+  "05": "CONSIGNACION", "06": "DEVOLUCION", "07": "RECOJO DE BIENES TRANSFORMADOS", "08": "IMPORTACION", "09": "EXPORTACION",
+  "13": "OTROS", "14": "VENTA SUJETA A CONFIRMACION DEL COMPRADOR", "17": "TRASLADO DE BIENES PARA TRANSFORMACION", "18": "TRASLADO EMISOR ITINERANTE CP"
+};
+
+export function mapDespatchToApiPeru(command: DespatchCommand, issuer: BillingIssuer) {
+  const data = command.data;
+  const isShipper = command.guideType === "REMITENTE";
+  const usesOwnVehicle = !isShipper || data.transportMode === "02";
+  if (!isShipper && !data.shipper) throw new Error("La guía de transportista requiere los datos del remitente.");
+  if (isShipper && data.transportMode === "01" && !data.carrier) throw new Error("El transporte público requiere los datos de la empresa de transportes.");
+  if (usesOwnVehicle && (!data.vehiclePlate || !data.driver)) throw new Error("El transporte privado requiere placa del vehículo y datos del conductor.");
+  const party = (p: { documentType: string; documentNumber: string; name: string }) => ({ tipoDoc: p.documentType, numDoc: p.documentNumber, rznSocial: p.name });
+  const reasonCode = isShipper ? data.reasonCode ?? "01" : "01";
+
+  return {
+    version: 2022,
+    tipoDoc: GUIDE_DOC_TYPE[command.guideType],
+    serie: command.series,
+    correlativo: String(command.correlative),
+    fechaEmision: formatLimaIso(command.issueDate),
+    company: companyPayload(issuer),
+    destinatario: party(data.recipient),
+    ...(!isShipper && data.shipper ? { remitente: party(data.shipper) } : {}),
+    ...(data.notes ? { observacion: data.notes.slice(0, 250) } : {}),
+    ...(data.relatedDocument
+      ? { addDocs: [{ tipo: SUNAT_DOC_TYPE[data.relatedDocument.documentType], tipoDesc: data.relatedDocument.documentType === "FACTURA" ? "Factura" : "Boleta de Venta", nro: `${data.relatedDocument.series}-${data.relatedDocument.correlative}`, emisor: issuer.ruc }] }
+      : {}),
+    envio: {
+      codTraslado: reasonCode,
+      desTraslado: reasonCode === "13" ? (data.reasonDescription ?? "OTROS").slice(0, 70) : TRANSFER_REASONS[reasonCode] ?? "VENTA",
+      modTraslado: isShipper ? data.transportMode ?? "01" : "02",
+      fecTraslado: limaMidnight(data.transferDate),
+      pesoTotal: data.grossWeight,
+      undPesoTotal: data.weightUnit,
+      ...(isShipper && data.packages ? { numBultos: data.packages } : {}),
+      partida: { ubigueo: data.origin.ubigeo, direccion: data.origin.address },
+      llegada: { ubigueo: data.destination.ubigeo, direccion: data.destination.address },
+      ...(isShipper && data.transportMode === "01" && data.carrier
+        ? { transportista: { tipoDoc: "6", numDoc: data.carrier.documentNumber, rznSocial: data.carrier.name, ...(data.carrier.mtcNumber ? { nroMtc: data.carrier.mtcNumber } : {}) } }
+        : {}),
+      ...(usesOwnVehicle && data.driver
+        ? {
+            vehiculo: { placa: data.vehiclePlate },
+            choferes: [{ tipo: "Principal", tipoDoc: data.driver.documentType, nroDoc: data.driver.documentNumber, nombres: data.driver.names, apellidos: data.driver.surnames, licencia: data.driver.license }]
+          }
+        : {})
+    },
+    details: data.items.map((item) => ({ cantidad: item.quantity, unidad: item.unit || "NIU", descripcion: item.description, ...(item.code ? { codigo: item.code } : {}) }))
+  };
+}
+
 export class ApiPeruBillingProvider implements BillingProvider {
   readonly code = "apisperu" as const;
   private readonly baseUrl: string;
@@ -247,7 +407,7 @@ export class ApiPeruBillingProvider implements BillingProvider {
     let response: Response;
     try {
       // Notas de crédito: endpoint note/send (modelo Greenter). Validar en sandbox.
-      const path = command.documentType === "NOTA_CREDITO" ? "note/send" : "invoice/send";
+      const path = command.documentType === "NOTA_CREDITO" || command.documentType === "NOTA_DEBITO" ? "note/send" : "invoice/send";
       response = await this.request(new URL(path, this.baseUrl), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -371,7 +531,7 @@ export class ApiPeruBillingProvider implements BillingProvider {
    */
   async getDocumentPdf(command: IssueDocumentCommand): Promise<Buffer> {
     const body = mapCommandToApiPeru(command, this.options.issuer);
-    const path = command.documentType === "NOTA_CREDITO" ? "note/pdf" : "invoice/pdf";
+    const path = command.documentType === "NOTA_CREDITO" || command.documentType === "NOTA_DEBITO" ? "note/pdf" : "invoice/pdf";
     const response = await this.request(new URL(path, this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/pdf" },
@@ -381,6 +541,69 @@ export class ApiPeruBillingProvider implements BillingProvider {
     if (!response.ok || bytes.subarray(0, 4).toString("ascii") !== "%PDF") {
       throw new Error(`APIsPERU no generó el PDF (HTTP ${response.status}).`);
     }
+    return bytes;
+  }
+
+  async requestVoiding(command: VoidingCommand): Promise<VoidingResult> {
+    const { path, body } = mapVoidingToApiPeru(command, this.options.issuer);
+    try {
+      const response = await this.request(new URL(path, this.baseUrl), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (response.status === 401 || response.status === 403) throw new Error("APIsPERU rechazo la credencial del negocio. Revisa el token configurado.");
+      return interpretTicketResponse<VoidingResult>(await response.json().catch(() => ({})), response.status, "comunicación de baja");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("credencial")) throw error;
+      return { providerCode: this.code, status: "PENDING", message: `Resultado incierto con APIsPERU: ${error instanceof Error ? error.message : "sin respuesta"}.` };
+    }
+  }
+
+  async getVoidingStatus(command: VoidingCommand, ticket?: string): Promise<VoidingResult> {
+    // Sin ticket no hay nada que consultar: el envío no llegó a SUNAT.
+    if (!ticket) return { providerCode: this.code, status: "PENDING", message: "La baja aún no tiene ticket de SUNAT." };
+    const url = new URL(command.kind === "COMUNICACION_BAJA" ? "voided/status" : "summary/status", this.baseUrl);
+    url.searchParams.set("ticket", ticket);
+    url.searchParams.set("ruc", this.options.issuer.ruc);
+    try {
+      const response = await this.request(url, { method: "GET" });
+      return interpretTicketStatus<VoidingResult>(await response.json().catch(() => ({})) as ApiPeruStatusResponse, ticket);
+    } catch (error) {
+      return { providerCode: this.code, status: "PENDING", ticket, message: `No pudimos consultar la baja: ${error instanceof Error ? error.message : "sin respuesta"}` };
+    }
+  }
+
+  async issueDespatch(command: DespatchCommand): Promise<DespatchResult> {
+    const body = mapDespatchToApiPeru(command, this.options.issuer);
+    try {
+      const response = await this.request(new URL("despatch/send", this.baseUrl), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (response.status === 401 || response.status === 403) throw new Error("APIsPERU rechazo la credencial del negocio. Revisa el token configurado.");
+      return interpretTicketResponse<DespatchResult>(await response.json().catch(() => ({})), response.status, "guía de remisión");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("credencial")) throw error;
+      return { providerCode: this.code, status: "PENDING", message: `Resultado incierto con APIsPERU: ${error instanceof Error ? error.message : "sin respuesta"}.` };
+    }
+  }
+
+  async getDespatchStatus(_command: DespatchCommand, ticket?: string): Promise<DespatchResult> {
+    if (!ticket) return { providerCode: this.code, status: "PENDING", message: "La guía aún no tiene ticket de SUNAT." };
+    const url = new URL("despatch/status", this.baseUrl);
+    url.searchParams.set("ticket", ticket);
+    url.searchParams.set("ruc", this.options.issuer.ruc);
+    try {
+      const response = await this.request(url, { method: "GET" });
+      return interpretTicketStatus<DespatchResult>(await response.json().catch(() => ({})) as ApiPeruStatusResponse, ticket);
+    } catch (error) {
+      return { providerCode: this.code, status: "PENDING", ticket, message: `No pudimos consultar la guía: ${error instanceof Error ? error.message : "sin respuesta"}` };
+    }
+  }
+
+  /** PDF oficial de la guía (despatch/pdf). */
+  async getDespatchPdf(command: DespatchCommand): Promise<Buffer> {
+    const response = await this.request(new URL("despatch/pdf", this.baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/pdf" },
+      body: JSON.stringify(mapDespatchToApiPeru(command, this.options.issuer))
+    });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!response.ok || bytes.subarray(0, 4).toString("ascii") !== "%PDF") throw new Error(`APIsPERU no generó el PDF de la guía (HTTP ${response.status}).`);
     return bytes;
   }
 

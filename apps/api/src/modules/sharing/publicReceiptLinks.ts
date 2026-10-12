@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export type ReceiptLinkPurpose = "VIEW" | "PDF";
+export type ReceiptLinkPurpose = "VIEW" | "PDF" | "GUIDE_PDF";
 
 type ReceiptLinkPayload = {
   receiptId: string;
