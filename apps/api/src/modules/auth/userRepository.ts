@@ -63,6 +63,18 @@ export async function findUserByEmail(email: string): Promise<UserRecord | null>
   return mapUser(row, await ensureDefaultTenant(row));
 }
 
+export async function findUserById(id: string): Promise<UserRecord | null> {
+  const rows = await sql`
+    select id, email, password_hash
+    from app_users
+    where id = ${id}
+    limit 1
+  `;
+  const row = rows[0] as UserRow | undefined;
+  if (!row) return null;
+  return mapUser(row, await ensureDefaultTenant(row));
+}
+
 export async function createUser(email: string, passwordHash: string): Promise<UserRecord | null> {
   const id = randomUUID();
   const tenantId = randomUUID();

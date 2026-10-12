@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { closeDatabase } from "../db/client.js";
+import { closeDatabase, sql } from "../db/client.js";
+import { totpCode } from "../modules/security/totp.js";
+import { decryptSecret, encryptSecret, getCachedTenantSecret, loadSecretCache, setTenantSecret } from "../modules/security/vault.js";
 import { runMigrations } from "../db/migrations.js";
 import {
   completeSunatRucImport,
@@ -408,18 +410,6 @@ async function main() {
   const tamperedLink = await fetch(`${apiBase}/exports/sales-register.csv?t=${encodeURIComponent(link.url.split("t=")[1].slice(0, -2) + "xx")}`);
   assert.equal(tamperedLink.status, 400);
 
-  log("Rate limiting repeated failed logins");
-  let limited = false;
-  for (let attempt = 0; attempt < 15 && !limited; attempt += 1) {
-    const response = await fetch(`${apiBase}/v1/auth/login`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: `owner-a-${suffix}@example.test`, password: "wrong-password" })
-    });
-    limited = response.status === 429;
-  }
-  assert.ok(limited, "Login must be rate limited after repeated failures");
-
   log("Checking Nubefact received every real document exactly once");
   const nubefactStats = await (await fetch(`${mockDocumentsBase}/stats`)).json() as { nubefactIssued: number };
   // B001 x5 (online, offline, yape, cash, + factura F001) + nota de crédito BC01 = 6 emisiones
@@ -686,6 +676,70 @@ async function main() {
   assert.ok(voidStock.status === 200 || voidStock.status === 202, `void: ${voidStock.status} ${JSON.stringify(voidStock.body)}`);
   stProducts = await request("/v1/products", {}, stockToken);
   assert.equal(stProducts.find((p) => p.clientProductId === "arroz-1kg")?.stockQty, 12, "Credit note restocks goods");
+
+  log("Seguridad: 2FA, bitácora, bóveda, cabeceras y aislamiento entre negocios");
+  const sec = await register(`sec-${suffix}@example.test`);
+  const secToken = sec.accessToken;
+  const setup = await request<{ secret: string; otpauthUrl: string }>("/v1/auth/mfa/setup", { method: "POST" }, secToken);
+  assert.match(setup.otpauthUrl, /^otpauth:\/\/totp\/Faktu:/);
+  assert.equal((await rawRequest("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code: "000000" }) }, secToken)).status, 400, "Wrong TOTP is rejected");
+  await request("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code: totpCode(setup.secret) }) }, secToken);
+  const stepOne = await rawRequest("/v1/auth/login", { method: "POST", body: JSON.stringify({ email: `sec-${suffix}@example.test`, password: "E2ePassword123!" }) });
+  assert.equal(stepOne.body.mfaRequired, true);
+  assert.equal(stepOne.body.accessToken, undefined, "Password alone must not open a session");
+  const mfaToken = String(stepOne.body.mfaToken);
+  assert.equal((await rawRequest("/v1/auth/me", {}, mfaToken)).status, 401, "MFA step token is not a session");
+  assert.equal((await rawRequest("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken, code: "123456" === totpCode(setup.secret) ? "654321" : "123456" }) })).status, 401);
+  const session = await request<{ accessToken: string }>("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken, code: totpCode(setup.secret) }) });
+  assert.equal((await rawRequest("/v1/auth/me", {}, session.accessToken)).status, 200);
+  assert.equal((await rawRequest("/v1/auth/mfa/disable", { method: "POST", body: JSON.stringify({ code: totpCode(setup.secret) }) }, session.accessToken)).status, 200);
+
+  const audited = await request<Array<{ action: string }>>("/v1/audit", {}, tokenB);
+  assert.ok(audited.some((row) => row.action === "RECEIPT_CREATE"), "Receipt creation is audited");
+  assert.ok(audited.some((row) => row.action === "STOCK_ADJUST") && audited.some((row) => row.action === "RECEIVABLE_PAYMENT"));
+  await assert.rejects(() => sql`delete from audit_log`, /de solo agregado/, "Audit log is append-only");
+
+  const health = await fetch(`${apiBase}/health`);
+  assert.equal(health.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(health.headers.get("x-frame-options"), "DENY");
+
+  // Bóveda: cifrado ligado al dueño; el valor guardado en la base no es el token.
+  const sealed = encryptSecret("token-secreto", "tenant-1:billing_token");
+  assert.ok(!sealed.includes("token-secreto"));
+  assert.equal(decryptSecret(sealed, "tenant-1:billing_token"), "token-secreto");
+  assert.throws(() => decryptSecret(sealed, "tenant-2:billing_token"), "A secret moved to another tenant must not decrypt");
+  await setTenantSecret(ownerB.user.tenantId, "billing_token", "vault-token-e2e");
+  const stored = await sql<{ ciphertext: string }[]>`select ciphertext from tenant_secrets where tenant_id = ${ownerB.user.tenantId}`;
+  assert.ok(!stored[0].ciphertext.includes("vault-token-e2e"));
+  await loadSecretCache();
+  assert.equal(getCachedTenantSecret(ownerB.user.tenantId, "billing_token"), "vault-token-e2e");
+  await sql`delete from tenant_secrets where tenant_id = ${ownerB.user.tenantId}`;
+  await loadSecretCache();
+
+  // Aislamiento: el negocio A no puede ver ni tocar datos del negocio B (ni al revés).
+  const bReceipts = await request<Array<{ id: string; clientTransactionId: string }>>("/v1/receipts", {}, tokenB);
+  const bId = bReceipts[0].id;
+  assert.equal((await rawRequest(`/v1/receipts/${bId}`, {}, tokenA)).status, 404, "Receipt of another tenant is hidden");
+  assert.equal((await rawRequest(`/v1/receipts/${bId}/files/xml`, {}, tokenA)).status, 404);
+  assert.equal((await rawRequest(`/v1/receipts/${bId}/void`, { method: "POST", body: JSON.stringify({ reason: "intento ajeno" }) }, tokenA)).status, 404, "Cannot void another tenant receipt");
+  assert.notEqual((await rawRequest(`/v1/receivables/${bId}/payments`, { method: "POST", body: JSON.stringify({ amount: 1, method: "EFECTIVO" }) }, tokenA)).status, 200);
+  const aProducts = await request<Array<{ clientProductId: string }>>("/v1/products", {}, tokenA);
+  assert.ok(!aProducts.some((p) => p.clientProductId === "arroz-1kg"), "Products of another tenant are invisible");
+  assert.equal((await rawRequest("/v1/products/arroz-1kg/stock", { method: "POST", body: JSON.stringify({ mode: "SET", quantity: 999 }) }, tokenA)).status, 404);
+  assert.equal((await request<unknown[]>("/v1/receivables", {}, tokenA)).length, 0);
+  assert.equal((await rawRequest("/v1/receipts", {}, undefined)).status, 401, "No anonymous access");
+
+  log("Rate limiting repeated failed logins");
+  let limited = false;
+  for (let attempt = 0; attempt < 15 && !limited; attempt += 1) {
+    const response = await fetch(`${apiBase}/v1/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: `owner-a-${suffix}@example.test`, password: "wrong-password" })
+    });
+    limited = response.status === 429;
+  }
+  assert.ok(limited, "Login must be rate limited after repeated failures");
 
   log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact (NC parcial, ND, baja, guía) -> APIsPERU (ND, resumen de baja, guía) -> practice mode -> rate limit");
 }

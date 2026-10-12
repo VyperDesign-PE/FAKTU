@@ -165,7 +165,7 @@ export function ConfiguracionScreen({ navigation }: Props<"Configuracion">) {
         <ConfigLink title="Datos de empresa" detail="RUC, razón social, nombre comercial y dirección" onPress={() => navigation.navigate("Business")} />
         <ConfigLink title="Facturación electrónica" detail="Proveedor externo, series, comprobantes habilitados y conexión" onPress={() => navigation.navigate("SystemStatus")} />
         <ConfigLink title="Suscripción SaaS" detail="Plan mensual, estado de pago, renovación y comprobantes de cobro" />
-        <ConfigLink title="Usuarios y seguridad" detail="Propietario, cajeros, sesiones y cambio de contraseña" />
+        <ConfigLink title="Seguridad" detail="Verificación en dos pasos y registro de actividad de tu negocio" onPress={() => navigation.navigate("Seguridad")} />
         <ConfigLink title="Soporte" detail="Ayuda sencilla y diagnóstico del sistema" onPress={() => navigation.navigate("Support")} />
       </View>
     </ResponsiveShell>

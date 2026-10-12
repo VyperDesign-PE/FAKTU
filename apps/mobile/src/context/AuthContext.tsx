@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { AuthSession, AuthUser } from "../auth/types";
-import { loginWithEmail, registerWithEmail } from "../services/api";
+import { loginWithEmail, registerWithEmail, verifyMfaLogin } from "../services/api";
 import { clearSession, loadSession, saveSession } from "../storage/session";
 
 type AuthContextValue = {
   hydrated: boolean;
   isAuthenticated: boolean;
   user?: AuthUser;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Devuelve el token del paso de 2FA si la cuenta lo exige; si no, inicia sesión. */
+  signIn: (email: string, password: string) => Promise<{ mfaToken?: string }>;
+  completeMfa: (mfaToken: string, code: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -31,7 +33,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    await persist(await loginWithEmail(email, password));
+    const result = await loginWithEmail(email, password);
+    if ("mfaRequired" in result) return { mfaToken: result.mfaToken };
+    await persist(result);
+    return {};
+  }, [persist]);
+
+  const completeMfa = useCallback(async (mfaToken: string, code: string) => {
+    await persist(await verifyMfaLogin(mfaToken, code));
   }, [persist]);
 
   const signUp = useCallback(async (email: string, password: string) => {
@@ -48,9 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: Boolean(session?.accessToken),
     user: session?.user,
     signIn,
+    completeMfa,
     signUp,
     signOut
-  }), [hydrated, session, signIn, signUp, signOut]);
+  }), [hydrated, session, signIn, completeMfa, signUp, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

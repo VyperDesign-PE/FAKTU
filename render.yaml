@@ -20,6 +20,8 @@ services:
         value: "true"
       - key: JWT_SECRET
         generateValue: true
+      - key: SECRETS_MASTER_KEY
+        generateValue: true
       - key: PUBLIC_RECEIPT_LINK_SECRET
         generateValue: true
       - key: BILLING_PROVIDER

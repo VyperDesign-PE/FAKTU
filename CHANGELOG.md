@@ -1,3 +1,14 @@
+# 0.18.0 - Arquitectura segura: worker, bóveda, auditoría y 2FA
+
+- **Worker dedicado** (`npm run worker`, servicio `worker` en el compose de producción) con candado de PostgreSQL; la API puede seguir llevándolo integrado (demo).
+- **Bóveda de credenciales** cifrada (AES-256-GCM, `SECRETS_MASTER_KEY`) y `npm run ops:secret` para cargar tokens de proveedor sin dejar rastro.
+- **Bitácora de auditoría** de solo agregado y pantalla de actividad en la app.
+- **Verificación en dos pasos (TOTP)** opcional: login en dos pasos y pantalla Seguridad.
+- **Archivo propio de XML/CDR** para proveedores que solo dan enlace, con descarga por API.
+- Cabeceras de seguridad, CORS cerrado en producción (`CORS_ORIGINS`).
+- Prueba E2E de aislamiento entre negocios, 2FA, auditoría inmutable y bóveda.
+- `docs/SECURITY.md`: arquitectura, controles implementados y lo pendiente (RLS, KMS, PITR, refresh tokens).
+
 # 0.17.0 - Venta en un paso, stock, fiados y marca FAKTU
 
 **Diferenciadores para el pequeño comercio peruano**

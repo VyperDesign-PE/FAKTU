@@ -28,7 +28,8 @@ Total típico: **≈ US$ 5/mes + dominio**. Alcanza para decenas de negocios.
    ```bash
    git clone -b faktu-0.13-estabilizacion https://github.com/VyperDesign-PE/FAKTU /opt/faktu && cd /opt/faktu
    cp infra/.env.prod.example infra/.env.prod
-   nano infra/.env.prod     # DOMAIN y los 3 secretos (openssl rand -hex 32)
+   nano infra/.env.prod     # DOMAIN y los 4 secretos (openssl rand -hex 32)
+   # IMPORTANTE: guarda SECRETS_MASTER_KEY también fuera del servidor (gestor de contraseñas).
    ```
 5. **Levanta**:
    ```bash
@@ -44,7 +45,12 @@ Total típico: **≈ US$ 5/mes + dominio**. Alcanza para decenas de negocios.
    cd /opt/faktu && git pull && docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod up -d --build
    ```
    Las migraciones corren solas al iniciar.
-8. **Facturación real**: guarda los tokens de cada negocio en `infra/.env.providers` (formato en `docs/PILOTO.md`) y cambia `BILLING_PROVIDER`. Nunca los pongas en Git.
+8. **Facturación real**: carga el token de cada negocio en la bóveda cifrada, sin dejar rastro en el historial:
+   ```bash
+   echo -n "TOKEN_DEL_NEGOCIO" | docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec -T faktu npm --workspace @app/api run ops:secret -- correo@negocio.pe token
+   ```
+   (Nubefact además necesita `url`.) Luego activa el proveedor del negocio como indica `docs/PILOTO.md`. Nunca pongas tokens en Git.
+9. **Servicios**: `faktu` (web + API), `worker` (reintentos con SUNAT), `postgres` y `caddy`. Si un comprobante queda pendiente, el `worker` lo reintenta aunque nadie abra la app: `docker compose ... logs -f worker`.
 
 ## Si algo falla
 - `docker compose ... ps` muestra el estado; `logs faktu` el detalle.

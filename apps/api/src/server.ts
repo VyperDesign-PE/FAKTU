@@ -9,8 +9,13 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { sql } from "./db/client.js";
 import { runMigrations } from "./db/migrations.js";
+import { audit, listAudit } from "./modules/security/audit.js";
+import { startSecretCacheRefresh } from "./modules/security/vault.js";
+import { checkMfaCode, disableMfa, enableMfa, generateTotpSecret, isMfaEnabled, otpauthUrl, startMfaSetup } from "./modules/security/totp.js";
+import { getArchivedFile } from "./modules/receipts/archive.js";
+import { startWorker } from "./jobs/workerLoop.js";
 import { credentialsSchema } from "./modules/auth/schemas.js";
-import { createUser, findUserByEmail } from "./modules/auth/userRepository.js";
+import { createUser, findUserByEmail, findUserById } from "./modules/auth/userRepository.js";
 import { hashPassword, verifyPassword } from "./modules/auth/password.js";
 import { BillingService } from "./modules/billing/BillingService.js";
 import { lookupCustomerDocument } from "./modules/customerLookup/customerLookupService.js";
@@ -91,7 +96,19 @@ import { enqueueDelivery, listDeliveries, releaseWaitingDeliveries } from "./mod
 // TRUST_PROXY=true cuando la API corre detrás de un balanceador/proxy, para
 // que el límite de intentos use la IP real del cliente.
 const app = Fastify({ logger: true, trustProxy: (process.env.TRUST_PROXY ?? "false").toLowerCase() === "true" });
-await app.register(cors, { origin: true });
+// CORS: en producción la web se sirve desde el mismo dominio (sin CORS). Si se
+// aloja aparte (Cloudflare Pages, Vercel), lista los orígenes en CORS_ORIGINS.
+const corsOrigins = (process.env.CORS_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+await app.register(cors, { origin: corsOrigins.length ? corsOrigins : process.env.NODE_ENV === "production" ? false : true });
+
+app.addHook("onSend", async (_request, reply) => {
+  reply.header("X-Content-Type-Options", "nosniff");
+  reply.header("X-Frame-Options", "DENY");
+  reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  reply.header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+  if (process.env.NODE_ENV === "production") reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+});
 await app.register(rateLimit, { global: false });
 
 const authRateLimit = {
@@ -109,6 +126,7 @@ if (!jwtSecret) throw new Error("JWT_SECRET es obligatorio en producción");
 await app.register(jwt, { secret: jwtSecret });
 
 if ((process.env.DB_AUTO_MIGRATE ?? "true").toLowerCase() === "true") await runMigrations();
+startSecretCacheRefresh();
 const billingService = new BillingService();
 const deliveryService = new DeliveryService();
 
@@ -117,10 +135,35 @@ type SessionClaims = { sub: string; email: string; tenantId: string };
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
     await request.jwtVerify();
+    // El token del paso intermedio de 2FA no sirve como sesión.
+    if ((request.user as { purpose?: string }).purpose) throw new Error("not a session token");
   } catch {
     return reply.code(401).send({ message: "Tu sesión venció. Ingresa nuevamente." });
   }
 }
+
+// Bitácora de auditoría de operaciones que cambian dinero, stock, documentos o configuración.
+const AUDITED_ROUTES: Record<string, { action: string; entity: string }> = {
+  "POST /v1/receipts": { action: "RECEIPT_CREATE", entity: "receipt" },
+  "POST /v1/receipts/:id/void": { action: "RECEIPT_VOID", entity: "receipt" },
+  "POST /v1/receipts/:id/credit-notes": { action: "CREDIT_NOTE_CREATE", entity: "receipt" },
+  "POST /v1/receipts/:id/debit-notes": { action: "DEBIT_NOTE_CREATE", entity: "receipt" },
+  "POST /v1/receipts/:id/baja": { action: "VOIDING_REQUEST", entity: "receipt" },
+  "POST /v1/despatch-guides": { action: "GUIDE_CREATE", entity: "guide" },
+  "POST /v1/receivables/:receiptId/payments": { action: "RECEIVABLE_PAYMENT", entity: "receipt" },
+  "POST /v1/products/:clientProductId/stock": { action: "STOCK_ADJUST", entity: "product" },
+  "DELETE /v1/products/:clientProductId": { action: "PRODUCT_DELETE", entity: "product" },
+  "PATCH /v1/billing/settings": { action: "BILLING_SETTINGS_UPDATE", entity: "tenant" },
+  "PATCH /v1/business": { action: "BUSINESS_UPDATE", entity: "tenant" },
+  "POST /v1/reports/sales-register/link": { action: "EXPORT_LINK_CREATE", entity: "report" }
+};
+app.addHook("onResponse", async (request, reply) => {
+  const rule = AUDITED_ROUTES[`${request.method} ${request.routeOptions?.url ?? ""}`];
+  const user = request.user as Partial<SessionClaims> | undefined;
+  if (!rule || reply.statusCode >= 400 || !user?.tenantId) return;
+  const params = (request.params ?? {}) as Record<string, string>;
+  await audit({ tenantId: user.tenantId, userId: user.sub, action: rule.action, entityType: rule.entity, entityId: params.id ?? params.receiptId ?? params.clientProductId, ip: request.ip, meta: { status: reply.statusCode } });
+});
 
 function claims(request: FastifyRequest): SessionClaims {
   return request.user as SessionClaims;
@@ -154,6 +197,7 @@ app.post("/v1/auth/register", { config: authRateLimit }, async (request, reply) 
   if (await findUserByEmail(email)) return reply.code(409).send({ message: "Ya existe una cuenta con ese correo." });
   const user = await createUser(email, await hashPassword(password));
   if (!user) return reply.code(409).send({ message: "Ya existe una cuenta con ese correo." });
+  await audit({ tenantId: user.tenantId, userId: user.id, action: "USER_REGISTER", ip: request.ip });
   return reply.code(201).send(issueSession({ id: user.id, email: user.email, tenantId: user.tenantId }));
 });
 
@@ -162,9 +206,77 @@ app.post("/v1/auth/login", { config: authRateLimit }, async (request, reply) => 
   if (!parsed.success) return reply.code(400).send({ message: "Revisa el correo y la contraseña." });
   const user = await findUserByEmail(parsed.data.email);
   if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+    await audit({ action: "LOGIN_FAILED", ip: request.ip, meta: { known: Boolean(user) } });
     return reply.code(401).send({ message: "Correo o contraseña incorrectos." });
   }
+  if (await isMfaEnabled(user.id)) {
+    // Segundo paso: el token intermedio dura 5 minutos y no sirve como sesión.
+    const mfaToken = app.jwt.sign({ sub: user.id, purpose: "mfa" }, { expiresIn: "5m" });
+    return { mfaRequired: true, mfaToken };
+  }
+  await audit({ tenantId: user.tenantId, userId: user.id, action: "LOGIN", ip: request.ip });
   return issueSession({ id: user.id, email: user.email, tenantId: user.tenantId });
+});
+
+app.post("/v1/auth/mfa/verify", { config: authRateLimit }, async (request, reply) => {
+  const parsed = z.object({ mfaToken: z.string().min(10), code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ message: "Ingresa el código de 6 dígitos." });
+  let userId: string;
+  try {
+    const payload = app.jwt.verify<{ sub: string; purpose?: string }>(parsed.data.mfaToken);
+    if (payload.purpose !== "mfa") throw new Error("wrong token");
+    userId = payload.sub;
+  } catch {
+    return reply.code(401).send({ message: "El ingreso venció. Vuelve a ingresar tu correo y contraseña." });
+  }
+  if (!(await checkMfaCode(userId, parsed.data.code))) {
+    await audit({ userId, action: "MFA_FAILED", ip: request.ip });
+    return reply.code(401).send({ message: "Código incorrecto o vencido." });
+  }
+  const user = await findUserById(userId);
+  if (!user) return reply.code(401).send({ message: "Cuenta no encontrada." });
+  await audit({ tenantId: user.tenantId, userId, action: "LOGIN", ip: request.ip, meta: { mfa: true } });
+  return issueSession({ id: user.id, email: user.email, tenantId: user.tenantId });
+});
+
+app.get("/v1/auth/mfa/status", { preHandler: requireAuth }, async (request) => ({ enabled: await isMfaEnabled(claims(request).sub) }));
+
+app.post("/v1/auth/mfa/setup", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
+  const user = claims(request);
+  if (await isMfaEnabled(user.sub)) return reply.code(409).send({ message: "La verificación en dos pasos ya está activa." });
+  const secret = generateTotpSecret();
+  await startMfaSetup(user.sub, secret);
+  return { secret, otpauthUrl: otpauthUrl(user.email, secret) };
+});
+
+app.post("/v1/auth/mfa/enable", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
+  const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ message: "Ingresa el código de 6 dígitos." });
+  const user = claims(request);
+  if (!(await enableMfa(user.sub, parsed.data.code))) return reply.code(400).send({ message: "Código incorrecto. Revisa la hora de tu celular e inténtalo de nuevo." });
+  await audit({ tenantId: user.tenantId, userId: user.sub, action: "MFA_ENABLED", ip: request.ip });
+  return { enabled: true };
+});
+
+app.post("/v1/auth/mfa/disable", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
+  const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ message: "Ingresa el código de 6 dígitos." });
+  const user = claims(request);
+  if (!(await checkMfaCode(user.sub, parsed.data.code))) return reply.code(400).send({ message: "Código incorrecto." });
+  await disableMfa(user.sub);
+  await audit({ tenantId: user.tenantId, userId: user.sub, action: "MFA_DISABLED", ip: request.ip });
+  return { enabled: false };
+});
+
+app.get("/v1/audit", { preHandler: [requireAuth, requireTenantAdmin] }, async (request) => listAudit(claims(request).tenantId, 100));
+
+app.get("/v1/receipts/:id/files/:kind", { preHandler: requireAuth }, async (request, reply) => {
+  const params = z.object({ id: z.string().uuid(), kind: z.enum(["xml", "cdr"]) }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Archivo inválido." });
+  const file = await getArchivedFile(claims(request).tenantId, params.data.id, params.data.kind);
+  if (!file) return reply.code(404).send({ message: "Este comprobante aún no tiene ese archivo guardado." });
+  reply.header("Content-Disposition", `attachment; filename="${file.filename}"`);
+  return reply.type(file.contentType).send(file.body);
 });
 
 app.get("/v1/auth/me", { preHandler: requireAuth }, async (request) => {
@@ -963,24 +1075,8 @@ if ((process.env.DEMO_AUTOSEED ?? "").toLowerCase() === "true") {
 
 // Reintentos/conciliación en el servidor para comprobantes que quedaron
 // pendientes (respuesta perdida, proveedor caído), sin depender del celular.
-const workerIntervalMs = Number(process.env.RECEIPT_WORKER_INTERVAL_MS ?? 60_000);
-if ((process.env.RECEIPT_WORKER_ENABLED ?? "true").toLowerCase() === "true" && workerIntervalMs > 0) {
-  let running = false;
-  const timer = setInterval(async () => {
-    if (running) return;
-    running = true;
-    try {
-      const processed = [
-        ...await processPendingReceipts(billingService),
-        ...await processPendingVoidings(billingService),
-        ...await processPendingGuides(billingService)
-      ];
-      if (processed.length) app.log.info({ processed }, "pending receipts processed");
-    } catch (error) {
-      app.log.error({ error }, "pending receipts worker failed");
-    } finally {
-      running = false;
-    }
-  }, workerIntervalMs);
-  timer.unref();
+// Reintentos y conciliación en segundo plano. Para separarlos de la API:
+// RECEIPT_WORKER_ENABLED=false aquí y un proceso `npm run worker` aparte.
+if ((process.env.RECEIPT_WORKER_ENABLED ?? "true").toLowerCase() === "true") {
+  startWorker(billingService, (message, data) => app.log.info({ data }, message), (error) => app.log.error({ error }, "worker cycle failed"));
 }

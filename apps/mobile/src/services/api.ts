@@ -32,12 +32,44 @@ async function authorizedFetch(path: string, init: RequestInit = {}) {
   return fetch(`${API_URL}${path}`, { ...init, headers });
 }
 
+export type LoginResult = AuthSession | { mfaRequired: true; mfaToken: string };
+
 export async function loginWithEmail(email: string, password: string) {
-  return json<AuthSession>(await fetch(`${API_URL}/v1/auth/login`, {
+  return json<LoginResult>(await fetch(`${API_URL}/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
   }));
+}
+
+export async function verifyMfaLogin(mfaToken: string, code: string) {
+  return json<AuthSession>(await fetch(`${API_URL}/v1/auth/mfa/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mfaToken, code })
+  }));
+}
+
+export async function getMfaStatus() {
+  return json<{ enabled: boolean }>(await authorizedFetch("/v1/auth/mfa/status"));
+}
+
+export async function startMfaSetup() {
+  return json<{ secret: string; otpauthUrl: string }>(await authorizedFetch("/v1/auth/mfa/setup", { method: "POST" }));
+}
+
+export async function enableMfa(code: string) {
+  return json<{ enabled: boolean }>(await authorizedFetch("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) }));
+}
+
+export async function disableMfa(code: string) {
+  return json<{ enabled: boolean }>(await authorizedFetch("/v1/auth/mfa/disable", { method: "POST", body: JSON.stringify({ code }) }));
+}
+
+export type AuditEntry = { id: number; action: string; entityType?: string; entityId?: string; ip?: string; createdAt: string };
+
+export async function listAuditLog() {
+  return json<AuditEntry[]>(await authorizedFetch("/v1/audit"));
 }
 
 export async function registerWithEmail(email: string, password: string) {

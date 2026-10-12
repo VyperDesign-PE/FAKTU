@@ -1,4 +1,5 @@
 import type { TenantBillingConfig } from "./contracts.js";
+import { getCachedTenantSecret } from "../security/vault.js";
 
 /**
  * Resuelve la credencial del proveedor de facturación de un negocio.
@@ -56,6 +57,10 @@ export function resolveBillingCredential(config: TenantBillingConfig): string | 
   const ownToken = process.env[tenantSecretEnvName(config.tenantId)]?.trim();
   if (ownToken) return ownToken;
 
+  // Bóveda cifrada en la base de datos (npm run ops:secret).
+  const vaulted = getCachedTenantSecret(config.tenantId, "billing_token");
+  if (vaulted) return vaulted;
+
   return sharedSandboxToken(config);
 }
 
@@ -73,6 +78,8 @@ export function tenantUrlEnvName(tenantId: string) {
 export function resolveBillingEndpoint(config: TenantBillingConfig): string | undefined {
   const own = process.env[tenantUrlEnvName(config.tenantId)]?.trim();
   if (own) return own;
+  const vaulted = getCachedTenantSecret(config.tenantId, "billing_url");
+  if (vaulted) return vaulted;
   if (config.environment !== "sandbox") return undefined;
   if ((process.env.BILLING_ALLOW_SHARED_SANDBOX_TOKEN ?? "false").toLowerCase() !== "true") return undefined;
   return process.env[`${config.providerCode.toUpperCase()}_API_URL`]?.trim() || undefined;

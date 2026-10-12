@@ -9,6 +9,7 @@ const APISPERU_SANDBOX_MIGRATION_ID = "20260828_006_apisperu_sandbox";
 const PILOT_FEATURES_MIGRATION_ID = "20261012_007_payments_credit_notes";
 const DOCUMENT_SUITE_MIGRATION_ID = "20261012_008_notes_voidings_despatch";
 const STOCK_RECEIVABLES_MIGRATION_ID = "20261013_009_stock_receivables";
+const SECURITY_MIGRATION_ID = "20261014_010_security_vault_audit_mfa";
 
 /**
  * Migración idempotente del MVP 1.0.
@@ -628,6 +629,68 @@ export async function runMigrations() {
       await tx`
         insert into schema_migrations (id)
         values (${STOCK_RECEIVABLES_MIGRATION_ID})
+        on conflict do nothing
+      `;
+    });
+  }
+
+  const securityApplied = await sql`
+    select id from schema_migrations where id = ${SECURITY_MIGRATION_ID} limit 1
+  `;
+  if (!securityApplied.length) {
+    await sql.begin(async (tx) => {
+      // Bóveda: credenciales de proveedor cifradas (AES-256-GCM) por negocio.
+      await tx`
+        create table if not exists tenant_secrets (
+          tenant_id uuid not null references tenants(id) on delete cascade,
+          kind varchar(30) not null check (kind in ('billing_token', 'billing_url')),
+          ciphertext text not null,
+          updated_at timestamptz not null default now(),
+          primary key (tenant_id, kind)
+        )
+      `;
+
+      // Bitácora de auditoría: solo se agrega, nunca se modifica ni se borra.
+      await tx`
+        create table if not exists audit_log (
+          id bigserial primary key,
+          tenant_id uuid,
+          user_id uuid,
+          action varchar(60) not null,
+          entity_type varchar(40),
+          entity_id text,
+          ip text,
+          meta jsonb,
+          created_at timestamptz not null default now()
+        )
+      `;
+      await tx`create index if not exists idx_audit_log_tenant on audit_log (tenant_id, created_at desc)`;
+      await tx`
+        create or replace function audit_log_immutable() returns trigger as $$
+        begin
+          raise exception 'audit_log es de solo agregado';
+        end;
+        $$ language plpgsql
+      `;
+      await tx`drop trigger if exists trg_audit_log_immutable on audit_log`;
+      await tx`
+        create trigger trg_audit_log_immutable before update or delete on audit_log
+        for each row execute function audit_log_immutable()
+      `;
+
+      // Verificación en dos pasos (TOTP) opcional por usuario.
+      await tx`
+        create table if not exists user_mfa (
+          user_id uuid primary key references app_users(id) on delete cascade,
+          secret_ciphertext text not null,
+          enabled boolean not null default false,
+          created_at timestamptz not null default now()
+        )
+      `;
+
+      await tx`
+        insert into schema_migrations (id)
+        values (${SECURITY_MIGRATION_ID})
         on conflict do nothing
       `;
     });

@@ -20,16 +20,19 @@ services:
       retries: 20
 
   faktu:
+    image: faktu-app:local
     build:
       context: ..
       dockerfile: infra/Dockerfile
     restart: unless-stopped
-    environment:
+    environment: &app-env
+      RECEIPT_WORKER_ENABLED: "false"
       NODE_ENV: production
       API_PORT: 4000
       DATABASE_URL: postgres://faktu:${POSTGRES_PASSWORD}@postgres:5432/faktu
       DB_AUTO_MIGRATE: "true"
       JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET}
+      SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY:?define SECRETS_MASTER_KEY}
       PUBLIC_RECEIPT_LINK_SECRET: ${PUBLIC_RECEIPT_LINK_SECRET:?define PUBLIC_RECEIPT_LINK_SECRET}
       PUBLIC_APP_BASE_URL: https://${DOMAIN:?define DOMAIN}
       BILLING_PROVIDER: ${BILLING_PROVIDER:-mock}
@@ -37,12 +40,29 @@ services:
       DELIVERY_PROVIDER: mock
       DEMO_AUTOSEED: ${DEMO_AUTOSEED:-false}
     env_file:
-      # Credenciales por negocio (BILLING_TOKEN_...) y proveedores: ver docs/PILOTO.md
+      # Credenciales de proveedor (alternativa a la bóveda): ver docs/PILOTO.md
       - path: .env.providers
         required: false
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Proceso dedicado a reintentos y conciliación con SUNAT/proveedor (mismo código, otro comando).
+  worker:
+    image: faktu-app:local
+    restart: unless-stopped
+    command: ["../../node_modules/.bin/tsx", "src/worker.ts"]
+    environment:
+      <<: *app-env
+      RECEIPT_WORKER_ENABLED: "true"
+    env_file:
+      - path: .env.providers
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      faktu:
+        condition: service_started
 
   caddy:
     image: caddy:2-alpine

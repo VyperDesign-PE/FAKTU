@@ -25,6 +25,7 @@ import {
 } from "../screens/main/MainSectionScreens";
 import { PosScreen } from "../screens/pos/PosScreen";
 import { ProductFormScreen, ProductosScreen } from "../screens/products/ProductScreens";
+import { SeguridadScreen } from "../screens/security/SecurityScreen";
 import { PorCobrarScreen } from "../screens/receivables/ReceivableScreens";
 import { CashCloseScreen } from "../screens/reports/ReportsScreens";
 import { GuideDetailScreen, GuideFormScreen, GuidesScreen } from "../screens/guides/GuideScreens";
@@ -67,6 +68,7 @@ export function AppRouter() {
         <Stack.Screen name="Productos" component={ProductosScreen} />
         <Stack.Screen name="ProductForm" component={ProductFormScreen} />
         <Stack.Screen name="PorCobrar" component={PorCobrarScreen} />
+        <Stack.Screen name="Seguridad" component={SeguridadScreen} />
         <Stack.Screen name="HistorialComprobantes" component={HistorialComprobantesScreen} />
         <Stack.Screen name="Configuracion" component={ConfiguracionScreen} />
 

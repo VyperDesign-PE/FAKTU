@@ -23,7 +23,9 @@ function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 export function LoginScreen({ navigation }: P<"Login">) {
-  const { signIn } = useAuth();
+  const { signIn, completeMfa } = useAuth();
+  const [mfaToken, setMfaToken] = useState<string>();
+  const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,13 +38,32 @@ export function LoginScreen({ navigation }: P<"Login">) {
     if (hasErrors(errors)) return;
     setBusy(true);
     try {
-      await signIn(normalizeEmail(email), password);
+      if (mfaToken) {
+        await completeMfa(mfaToken, code.trim());
+        navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] });
+        return;
+      }
+      const result = await signIn(normalizeEmail(email), password);
+      if (result.mfaToken) { setMfaToken(result.mfaToken); return; }
       navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] });
     } catch (error) {
       showAlert("No pudimos ingresar", error instanceof Error ? error.message : "Verifica tus datos e inténtalo nuevamente.");
     } finally {
       setBusy(false);
     }
+  }
+
+  if (mfaToken) {
+    return (
+      <Screen narrow>
+        <AuthHeader title="Verificación en dos pasos" subtitle="Abre tu app de autenticación e ingresa el código de 6 dígitos de Faktu." />
+        <Card>
+          <TextField label="Código de 6 dígitos" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad" placeholder="123456" autoComplete="one-time-code" onSubmitEditing={() => void submit()} />
+          <PrimaryButton label={busy ? "VERIFICANDO..." : "VERIFICAR"} onPress={() => void submit()} disabled={busy || code.length !== 6} />
+          <Pressable onPress={() => { setMfaToken(undefined); setCode(""); }}><Text style={styles.link}>Volver</Text></Pressable>
+        </Card>
+      </Screen>
+    );
   }
 
   return (
@@ -165,6 +186,7 @@ export function RegisterScreen({ navigation }: P<"Register">) {
 }
 
 const styles = StyleSheet.create({
+  link: { color: theme.colors.primary, fontWeight: "800", textAlign: "center", paddingVertical: 6 },
   header: { alignItems: "center", gap: 8, paddingTop: 24, paddingBottom: 12 },
   logo: { width: 68, height: 68, borderRadius: 22, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" },
   logoText: { color: "white", fontWeight: "900", fontSize: 26 },
