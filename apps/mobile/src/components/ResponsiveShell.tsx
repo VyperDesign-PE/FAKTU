@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../navigation/types";
 import { theme } from "../theme";
 
 export type MainRouteName = "Dashboard" | "POSVenta" | "HistorialComprobantes" | "Configuracion";
 
 type Props = {
   currentRoute: MainRouteName;
-  navigation: NativeStackNavigationProp<RootStackParamList>;
+  // Tipo estructural mínimo: cualquier pantalla del stack puede pasar su navigation.
+  navigation: { navigate(route: MainRouteName): void };
   children: ReactNode;
   title: string;
   subtitle?: string;

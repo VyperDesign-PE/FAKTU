@@ -28,7 +28,7 @@ export function ReceiptHistoryScreen({ navigation }: P<"ReceiptHistory">) {
     {!history.length && !localOnly.length ? <Card><Text style={styles.center}>Todavía no hay comprobantes.</Text></Card> : null}
 
     {localOnly.map((r) => <Pressable key={r.clientTransactionId} onPress={() => navigation.navigate("ReceiptDetail", { clientTransactionId: r.clientTransactionId })}>
-      <Card tone={r.status === "ERROR" ? "danger" : "warning"}>
+      <Card tone={r.status === "ERROR" || r.status === "REJECTED" ? "danger" : r.status === "ACCEPTED" ? "success" : "warning"}>
         <InfoRow label={r.documentType} value={r.officialNumber ?? r.temporaryNumber} />
         <InfoRow label="Total" value={`S/ ${r.total.toFixed(2)}`} />
         <InfoRow label="Estado" value={friendlyStatus(r.status)} />
@@ -62,7 +62,7 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
 
   if (localReceipt) {
     return <Screen title="Detalle del comprobante" subtitle={localReceipt.officialNumber ?? localReceipt.temporaryNumber}>
-      <Card tone={localReceipt.status === "ACCEPTED" ? "success" : localReceipt.status === "ERROR" ? "danger" : "warning"}>
+      <Card tone={localReceipt.status === "ACCEPTED" ? "success" : localReceipt.status === "ERROR" || localReceipt.status === "REJECTED" ? "danger" : "warning"}>
         <InfoRow label="Estado" value={friendlyStatus(localReceipt.status)} />
         <InfoRow label="Tipo" value={localReceipt.documentType} />
         <InfoRow label="Fecha" value={new Date(localReceipt.createdAt).toLocaleString()} />
@@ -206,7 +206,7 @@ export function BillingSettingsScreen({ navigation }: P<"BillingSettings">) {
 export function SystemStatusScreen({ navigation }: P<"SystemStatus">) {
   const { online, pendingCount, queue } = useApp();
   const [rucRegistry, setRucRegistry] = useState<RucRegistryStatus>();
-  const errors = queue.filter((r) => r.status === "ERROR").length;
+  const errors = queue.filter((r) => r.status === "ERROR" || r.status === "REJECTED").length;
   const title = !online ? "Sin Internet" : errors ? "Hay algo que revisar" : pendingCount ? "Hay comprobantes pendientes" : "Todo funciona correctamente";
 
   useEffect(() => {
@@ -255,7 +255,7 @@ export function SupportScreen({ navigation }: P<"Support">) {
   </Screen>;
 }
 
-function friendlyStatus(status: "PENDING" | "SYNCING" | "ACCEPTED" | "ERROR") { return { PENDING: "Pendiente", SYNCING: "Enviando", ACCEPTED: "Aceptado", ERROR: "Revisar" }[status]; }
+function friendlyStatus(status: "PENDING" | "SYNCING" | "ACCEPTED" | "REJECTED" | "ERROR") { return { PENDING: "Pendiente", SYNCING: "Enviando", ACCEPTED: "Aceptado", REJECTED: "Rechazado", ERROR: "Revisar" }[status]; }
 function friendlyRemoteStatus(status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR") { return { ACCEPTED: "Aceptado", PENDING: "Pendiente", REJECTED: "Rechazado", ERROR: "Revisar" }[status]; }
 
 const styles = StyleSheet.create({

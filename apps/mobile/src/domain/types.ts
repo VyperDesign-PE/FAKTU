@@ -1,5 +1,13 @@
 export type DocumentType = "BOLETA" | "FACTURA";
-export type ReceiptStatus = "PENDING" | "SYNCING" | "ACCEPTED" | "ERROR";
+/**
+ * PENDING/SYNCING/ERROR: se reintentará. ACCEPTED/REJECTED: estado final.
+ * REJECTED incluye rechazos de SUNAT y ventas inválidas (no se reintentan).
+ */
+export type ReceiptStatus = "PENDING" | "SYNCING" | "ACCEPTED" | "REJECTED" | "ERROR";
+
+export function isFinalReceiptStatus(status: ReceiptStatus) {
+  return status === "ACCEPTED" || status === "REJECTED";
+}
 export type CustomerDocumentType = "DNI" | "RUC";
 
 export type Product = {

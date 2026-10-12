@@ -16,17 +16,22 @@ La documentacion publica de APIsPERU indica:
 
 El token de empresa NO se almacena en el movil y NO debe guardarse en texto plano en PostgreSQL.
 
-Para el MVP local puede resolverse mediante una referencia:
-
-```text
-credential_secret_ref = env:APISPERU_API_TOKEN_CENCA
-```
-
-Y el secreto vive solo en el entorno del backend:
+Desde 0.13.0 el negocio **no** elige el secreto. Cada negocio usa su propia variable, que solo operaciones puede definir en el backend:
 
 ```env
-APISPERU_API_TOKEN_CENCA=...
+# BILLING_TOKEN_ + tenantId sin guiones, en mayúsculas
+BILLING_TOKEN_3F2B8C1A00004000800000000000001=...
 ```
+
+Opcionalmente operaciones puede fijar en la base una referencia distinta, que siempre debe empezar por `BILLING_TOKEN_`:
+
+```sql
+update tenant_billing_settings
+set credential_secret_ref = 'env:BILLING_TOKEN_EMPRESA_CENCA'
+where tenant_id = '...';
+```
+
+Referencias a otras variables (`env:JWT_SECRET`, `env:DATABASE_URL`...) se rechazan. El token compartido `APISPERU_API_TOKEN` solo se usa en `sandbox` y únicamente con `BILLING_ALLOW_SHARED_SANDBOX_TOKEN=true` (útil para una empresa demo de pruebas); en producción nunca.
 
 Para produccion, `secretResolver.ts` debe reemplazarse por un Secret Manager administrado.
 

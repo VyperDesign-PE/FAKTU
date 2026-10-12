@@ -1,3 +1,36 @@
+# 0.13.0 - FAKTU: estabilización previa al piloto
+
+Correcciones de la revisión técnica de la 0.12.2.
+
+**Integridad tributaria**
+- El servidor recalcula subtotal, IGV y total desde los ítems (`receipts/pricing.ts`). Si el total del celular difiere en más de 1 céntimo responde 422 `TOTAL_MISMATCH`. Antes una venta de S/ 100 podía guardarse como S/ 1.
+- Cabecera = suma exacta de líneas, también en el JSON a APIsPERU (antes 3 ítems de S/ 1 daban 2.54 vs 2.55).
+- Reglas validadas antes de reservar correlativo (`receipts/documentRules.ts`): factura exige RUC y razón social; boleta > S/ 700 exige identificar al cliente; formato DNI/RUC.
+
+**Emisión segura ante reintentos** (`receipts/receiptIssuer.ts`)
+- Si hubo un intento previo (incluido estado ERROR) se concilia antes de reenviar; antes un ERROR se reemitía a ciegas y podía marcar RECHAZADO un comprobante aceptado.
+- Reserva atómica del envío: dos peticiones simultáneas no llegan ambas al proveedor.
+- Un estado ACEPTADO/RECHAZADO nunca vuelve a PENDIENTE por una respuesta tardía.
+- SUNAT 1033 ("registrado previamente") se trata como pendiente de conciliación, no como rechazo.
+- Proceso del servidor que concilia/reintenta pendientes con backoff (`RECEIPT_WORKER_*`).
+- Códigos HTTP coherentes: 200 aceptado, 202 pendiente, 422 rechazado, 503 error.
+
+**Seguridad**
+- El negocio ya no puede elegir `credentialSecretRef` (antes aceptaba `env:JWT_SECRET`). Token propio `BILLING_TOKEN_<tenantId>`; token compartido solo en sandbox con permiso explícito.
+- Solo OWNER/ADMIN cambia la configuración de facturación. Producción bloqueada hasta `BILLING_PRODUCTION_ENABLED=true`; simulador bloqueado en producción.
+- OTP: en producción ya no acepta cualquier código; queda deshabilitado hasta integrar SMS real.
+- Los errores no revelan nombres de variables de entorno.
+
+**App móvil**
+- Nuevo estado REJECTED: un comprobante rechazado ya no se muestra como aceptado ni se reintenta sin fin.
+- Ventas que quedaron en "Enviando" al cerrar la app vuelven a sincronizarse.
+- El total se redondea por línea igual que el servidor.
+- Corrige los 4 errores de tipos de `MainSectionScreens.tsx`.
+
+**Producto y calidad**
+- Nombre unificado: FAKTU (app, demo web, paquete `pe.faktu.app`).
+- `package-lock.json` versionado; pruebas unitarias (`npm test`), integración con PostgreSQL (`npm run test:integration`), E2E sin Docker (`scripts/run-e2e-local.sh`) y CI en GitHub Actions.
+
 # 0.12.2
 
 - Corrige la prueba E2E: la API pública devuelve `status = ACCEPTED` y `sunatStatus = ACEPTADO`; el test antiguo comparaba erróneamente `status` con `ACEPTADO`.

@@ -22,6 +22,8 @@ APISPERU_SANDBOX_SERIES=B001
 APISPERU_SANDBOX_CORRELATIVE=1
 ```
 
+> `APISPERU_API_TOKEN` lo usa solo el script `test:apisperu-sandbox`. Para emitir desde la app, la API usa el token del negocio en `BILLING_TOKEN_<tenantId>` (o, solo en sandbox, `APISPERU_API_TOKEN` con `BILLING_ALLOW_SHARED_SANDBOX_TOKEN=true`). Ver `docs/APISPERU_SANDBOX.md`.
+
 ## 3. Primero prueba solo conectividad
 
 ```bash

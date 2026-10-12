@@ -94,7 +94,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await refreshHistory();
     return {
       accepted: next.filter((r) => r.status === "ACCEPTED").length,
-      errors: next.filter((r) => r.status === "ERROR").length
+      errors: next.filter((r) => r.status === "ERROR" || r.status === "REJECTED").length
     };
   }, [refreshHistory, scope, user]);
 
@@ -222,7 +222,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function createReceipt() {
     if (!user) throw new Error("Debes iniciar sesión para emitir comprobantes.");
-    const total = draft.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    // Mismo redondeo que el servidor: cada línea se redondea a céntimos y luego se suma.
+    const totalCents = draft.items.reduce((sum, item) => sum + Math.round((item.quantity * item.unitPrice + Number.EPSILON) * 100), 0);
+    const total = totalCents / 100;
     const receipt: PendingReceipt = {
       clientTransactionId: `client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       temporaryNumber: `VT-${Date.now().toString().slice(-6)}`,
@@ -230,7 +232,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       documentType: draft.documentType,
       items: draft.items,
       customer: draft.customer,
-      total: Number(total.toFixed(2)),
+      total,
       status: "PENDING"
     };
     await enqueueReceipt(scope, receipt);
@@ -240,7 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return receipt;
   }
 
-  const pendingCount = queue.filter((r) => r.status !== "ACCEPTED").length;
+  const pendingCount = queue.filter((r) => r.status === "PENDING" || r.status === "SYNCING" || r.status === "ERROR").length;
 
   const value = useMemo<AppContextValue>(() => ({
     hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt,

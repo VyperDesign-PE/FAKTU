@@ -161,7 +161,9 @@ Lista los proveedores candidatos disponibles para configuracion del tenant. No d
 Devuelve proveedor, ambiente, referencia de cuenta, estado de conexion y si existe una credencial segura configurada.
 
 ### PATCH `/v1/billing/settings`
-Actualiza proveedor/ambiente por tenant. El móvil nunca envía el token real. Para desarrollo administrado se puede guardar una **referencia** a una variable de entorno (`env:NOMBRE_VARIABLE`), no el secreto.
+Actualiza proveedor/ambiente por tenant. Solo el titular (`OWNER`/`ADMIN`) puede usarlo. El móvil nunca envía el token ni elige qué secreto se usa: desde 0.13.0 el campo `credentialSecretRef` se rechaza (400) y tampoco se devuelve en `GET`.
+
+`environment: "production"` responde 409 mientras la plataforma no defina `BILLING_PRODUCTION_ENABLED=true`.
 
 Ejemplo:
 
@@ -169,10 +171,11 @@ Ejemplo:
 {
   "providerCode": "apisperu",
   "environment": "sandbox",
-  "providerAccountRef": "empresa-beta-001",
-  "credentialSecretRef": "env:APISPERU_API_TOKEN_EMPRESA_001"
+  "providerAccountRef": "empresa-beta-001"
 }
 ```
+
+La credencial de cada negocio la asigna operaciones en el backend (ver `docs/APISPERU_SANDBOX.md`).
 
 ### POST `/v1/billing/test-connection`
 Prueba la configuracion del proveedor y persiste `connection_status`, `last_tested_at` y `last_error`.

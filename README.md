@@ -1,10 +1,33 @@
-# Aplicativo de facturación electrónica — MVP 1.0
+# FAKTU
 
-Base fullstack para un SaaS multi-tenant orientado a pequeños negocios en Perú: bodegas, librerías, restaurantes de menú y comercios similares.
+Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App móvil (React Native + Expo), API (Fastify + PostgreSQL) y adaptador de facturación desacoplado (APIsPERU en sandbox).
 
-## Iteracion actual: 0.12.2
+## Versión actual: 0.13.0 — estabilización previa al piloto
 
-Esta versión incorpora el primer **adaptador nativo de facturación electrónica real para APIsPERU en sandbox**, manteniendo el POS desacoplado mediante `BillingProvider`. Incluye mapeo Boleta/Factura, preservación de XML/CDR/hash, conciliación por estado para respuestas perdidas y protección contra reemisión a ciegas.
+Corrige los problemas críticos detectados en la revisión de la 0.12.2 (ver `CHANGELOG.md`):
+
+- El servidor recalcula montos e IGV a partir de los ítems; ya no confía en el total del celular.
+- Reglas tributarias validadas **antes** de reservar correlativo (factura con RUC, boleta > S/ 700 identificada, formato DNI/RUC).
+- Emisión segura ante reintentos: concilia antes de reenviar, nunca envía dos veces en paralelo y un estado final no se degrada.
+- Proceso del servidor que concilia/reintenta comprobantes pendientes sin depender del celular.
+- Credenciales de facturación aisladas por negocio; producción y simulador bloqueados hasta habilitarlos.
+- La app móvil distingue comprobantes rechazados (antes podía mostrarlos como aceptados).
+- OTP de desarrollo deshabilitado en producción.
+
+## Inicio rápido
+
+```bash
+npm ci                      # dependencias fijadas en package-lock.json
+npm run typecheck           # API + app móvil
+npm test                    # pruebas unitarias y de adaptadores (sin base de datos)
+
+# Con PostgreSQL de PRUEBAS:
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/faktu_test ALLOW_DB_TESTS=true npm run test:integration
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/faktu_e2e scripts/run-e2e-local.sh   # E2E sin Docker
+npm run e2e:up              # E2E con Docker
+```
+
+Todo esto corre automáticamente en GitHub Actions (`.github/workflows/ci.yml`) en cada push y pull request.
 
 ## Stack
 
@@ -151,7 +174,7 @@ npm run dev:mobile
 
 ## Importante
 
-Esta base **todavía no emite comprobantes legales reales ante SUNAT**. El proveedor de facturación continúa en modo `mock` hasta seleccionar, contratar y validar el adaptador real.
+FAKTU **todavía no emite comprobantes legales reales ante SUNAT**. El proveedor por defecto es `mock` (bloqueado en producción) y el adaptador APIsPERU solo está validado contra mocks; falta la primera boleta/factura beta real (`PRIMERA_BOLETA_BETA.md`). La emisión en producción permanece bloqueada hasta definir `BILLING_PRODUCTION_ENABLED=true`.
 
 También falta conectar almacenamiento privado para JSON/XML/PDF/CDR y compartirlos mediante enlaces firmados temporales.
 

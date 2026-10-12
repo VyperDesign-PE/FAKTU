@@ -188,10 +188,27 @@ export type RemoteReceipt = {
   items?: Array<{ id: string; name: string; quantity: number; unitPrice: number; unit?: string }>;
 };
 
-export async function submitReceipt(receipt: PendingReceipt) {
-  return json<{ clientTransactionId: string; officialNumber?: string; status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR"; message?: string }>(
-    await authorizedFetch("/v1/receipts", { method: "POST", body: JSON.stringify(receipt) })
-  );
+export type SubmitReceiptResult = {
+  clientTransactionId: string;
+  officialNumber?: string;
+  status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR";
+  message?: string;
+};
+
+/**
+ * Envía una venta. El servidor responde con el estado del comprobante también
+ * en 202 (pendiente), 422 (rechazado) y 503 (error del proveedor), así que se
+ * lee el cuerpo antes de decidir. Solo lanza excepción cuando vale la pena
+ * reintentar (sin red, sesión vencida, error inesperado del servidor).
+ */
+export async function submitReceipt(receipt: PendingReceipt): Promise<SubmitReceiptResult> {
+  const response = await authorizedFetch("/v1/receipts", { method: "POST", body: JSON.stringify(receipt) });
+  const body = await response.json().catch(() => ({})) as Partial<SubmitReceiptResult> & { retryable?: boolean };
+  if (body.status) return { clientTransactionId: receipt.clientTransactionId, ...body } as SubmitReceiptResult;
+  if (response.status >= 400 && response.status < 500 && body.retryable === false) {
+    return { clientTransactionId: receipt.clientTransactionId, status: "REJECTED", message: body.message ?? "La venta no es válida." };
+  }
+  throw new Error(body.message ?? "No pudimos enviar el comprobante.");
 }
 
 export async function listRemoteReceipts(limit = 100) {

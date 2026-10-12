@@ -21,12 +21,17 @@ import {
   buildBillingCommand,
   getReceiptById,
   getReceiptByTransaction,
+  isFinalStatus,
   listReceipts,
-  markReceiptError,
-  markReceiptSending,
   prepareReceipt,
-  receiptToApi
+  receiptToApi,
+  type ReceiptRecord
 } from "./modules/receipts/receiptRepository.js";
+import { issueOrReconcileReceipt, processPendingReceipts } from "./modules/receipts/receiptIssuer.js";
+import { priceItems, totalsMatch } from "./modules/receipts/pricing.js";
+import { assertDocumentRules, DocumentRuleError } from "./modules/receipts/documentRules.js";
+import { getMembershipRole } from "./modules/tenants/membershipRepository.js";
+import { hasBillingCredential } from "./modules/billing/secretResolver.js";
 import { getBusiness, updateBusiness } from "./modules/tenants/tenantRepository.js";
 import {
   getBillingConnectionState,
@@ -113,15 +118,22 @@ app.get("/v1/auth/me", { preHandler: requireAuth }, async (request) => {
   return { id: user.sub, email: user.email, tenantId: user.tenantId };
 });
 
+// OTP de desarrollo: el código fijo 123456 solo existe fuera de producción.
+// En producción el endpoint queda deshabilitado hasta integrar un proveedor SMS
+// real; nunca se aceptan códigos sin verificar.
+const otpDevMode = process.env.NODE_ENV !== "production";
+
 app.post("/v1/auth/otp/request", { preHandler: requireAuth }, async (request, reply) => {
   const parsed = z.object({ phone: z.string().min(9) }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ message: "Número de celular inválido" });
-  return { ok: true, devCode: process.env.NODE_ENV === "production" ? undefined : "123456" };
+  if (!otpDevMode) return reply.code(503).send({ message: "La verificación por SMS todavía no está disponible." });
+  return { ok: true, devCode: "123456" };
 });
 
 app.post("/v1/auth/otp/verify", { preHandler: requireAuth }, async (request, reply) => {
   const parsed = z.object({ phone: z.string().min(9), code: z.string().length(6) }).safeParse(request.body);
-  if (!parsed.success || (process.env.NODE_ENV !== "production" && parsed.data.code !== "123456")) {
+  if (!otpDevMode) return reply.code(503).send({ message: "La verificación por SMS todavía no está disponible." });
+  if (!parsed.success || parsed.data.code !== "123456") {
     return reply.code(400).send({ message: "Código incorrecto" });
   }
   return { ok: true };
@@ -252,46 +264,54 @@ const receiptSchema = z.object({
   items: z.array(z.object({ id: z.string(), name: z.string().min(1), quantity: z.number().positive(), unitPrice: z.number().nonnegative(), unit: z.string().optional() })).min(1)
 });
 
+function sendReceipt(reply: FastifyReply, receipt: ReceiptRecord, failed = false) {
+  const payload = receiptToApi(receipt);
+  if (receipt.status === "ACEPTADO") return reply.send(payload);
+  if (receipt.status === "RECHAZADO") return reply.code(422).send(payload);
+  if (failed || receipt.status === "ERROR") return reply.code(503).send(payload);
+  return reply.code(202).send(payload);
+}
+
 app.post("/v1/receipts", { preHandler: requireAuth }, async (request, reply) => {
   const parsed = receiptSchema.safeParse(request.body);
-  if (!parsed.success) return reply.code(400).send({ message: "Datos de venta incompletos", details: parsed.error.flatten() });
+  if (!parsed.success) return reply.code(400).send({ code: "INVALID_RECEIPT", message: "Datos de venta incompletos", retryable: false, details: parsed.error.flatten() });
   const tenantId = claims(request).tenantId;
-  const prepared = await prepareReceipt({ tenantId, ...parsed.data });
-  if (!prepared.created && ["ACEPTADO", "RECHAZADO"].includes(prepared.receipt.status)) {
-    return receiptToApi(prepared.receipt);
+
+  // Una venta ya registrada se responde con su estado guardado (idempotencia).
+  const existing = await getReceiptByTransaction(tenantId, parsed.data.clientTransactionId);
+  if (!existing) {
+    // Validaciones ANTES de reservar correlativo: el servidor recalcula montos
+    // y aplica las reglas tributarias; nunca confía en el total del celular.
+    let serverTotal: number;
+    try {
+      serverTotal = priceItems(parsed.data.items).total;
+    } catch (error) {
+      return reply.code(422).send({ code: "INVALID_ITEMS", message: error instanceof Error ? error.message : "Ítems inválidos", retryable: false });
+    }
+    if (!totalsMatch(parsed.data.total, serverTotal)) {
+      return reply.code(422).send({
+        code: "TOTAL_MISMATCH",
+        message: `El total de la venta (S/ ${parsed.data.total.toFixed(2)}) no coincide con los productos (S/ ${serverTotal.toFixed(2)}).`,
+        expectedTotal: serverTotal,
+        retryable: false
+      });
+    }
+    try {
+      assertDocumentRules({ documentType: parsed.data.documentType, total: serverTotal, customer: parsed.data.customer });
+    } catch (error) {
+      if (error instanceof DocumentRuleError) return reply.code(422).send({ code: error.code, message: error.message, retryable: false });
+      throw error;
+    }
   }
 
-  // Si el POST anterior pudo haber llegado al proveedor pero perdimos la respuesta,
-  // NO reenviamos a ciegas: primero conciliamos por serie/correlativo.
-  if (!prepared.created && ["PENDIENTE", "ENVIANDO"].includes(prepared.receipt.status)) {
-    const current = await getReceiptById(tenantId, prepared.receipt.id);
-    if (!current) return reply.code(404).send({ message: "Comprobante no encontrado" });
-    const result = await billingService.reconcileDocument(await buildBillingCommand(current));
-    const stored = await applyBillingResult(tenantId, current.id, result);
-    if (stored.status === "ACEPTADO") await releaseWaitingDeliveries(tenantId, stored.id);
-    const payload = receiptToApi(stored);
-    if (result.status === "REJECTED") return reply.code(422).send(payload);
-    if (result.status === "PENDING") return reply.code(202).send(payload);
-    return payload;
+  const prepared = existing ? { receipt: existing } : await prepareReceipt({ tenantId, ...parsed.data });
+  if (isFinalStatus(prepared.receipt.status)) {
+    return sendReceipt(reply, (await getReceiptById(tenantId, prepared.receipt.id)) ?? prepared.receipt);
   }
 
-  try {
-    await markReceiptSending(tenantId, prepared.receipt.id);
-    const current = await getReceiptById(tenantId, prepared.receipt.id);
-    if (!current) throw new Error("No pudimos recuperar el comprobante preparado.");
-    const result = await billingService.issueDocument(await buildBillingCommand(current));
-    const stored = await applyBillingResult(tenantId, current.id, result);
-    if (stored.status === "ACEPTADO") await releaseWaitingDeliveries(tenantId, stored.id);
-    const payload = receiptToApi(stored);
-    if (result.status === "REJECTED") return reply.code(422).send(payload);
-    if (result.status === "PENDING") return reply.code(202).send(payload);
-    return payload;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "No pudimos enviar el comprobante.";
-    const stored = await markReceiptError(tenantId, prepared.receipt.id, message);
-    request.log.error({ error }, "receipt issue failed");
-    return reply.code(503).send({ ...receiptToApi(stored), message });
-  }
+  const outcome = await issueOrReconcileReceipt(billingService, tenantId, prepared.receipt.id);
+  if (outcome.failed) request.log.warn({ receiptId: outcome.receipt.id, message: outcome.receipt.providerMessage }, "receipt issue failed");
+  return sendReceipt(reply, outcome.receipt, outcome.failed);
 });
 
 app.get("/v1/receipts", { preHandler: requireAuth }, async (request) => {
@@ -322,14 +342,11 @@ app.post("/v1/receipts/:id/reconcile", { preHandler: requireAuth }, async (reque
   const tenantId = claims(request).tenantId;
   const receipt = await getReceiptById(tenantId, parsed.data.id);
   if (!receipt) return reply.code(404).send({ message: "Comprobante no encontrado" });
-  if (["ACEPTADO", "RECHAZADO"].includes(receipt.status)) return receiptToApi(receipt);
+  if (isFinalStatus(receipt.status)) return sendReceipt(reply, receipt);
   const result = await billingService.reconcileDocument(await buildBillingCommand(receipt));
   const stored = await applyBillingResult(tenantId, receipt.id, result);
   if (stored.status === "ACEPTADO") await releaseWaitingDeliveries(tenantId, stored.id);
-  const payload = receiptToApi(stored);
-  if (result.status === "REJECTED") return reply.code(422).send(payload);
-  if (result.status === "PENDING") return reply.code(202).send(payload);
-  return payload;
+  return sendReceipt(reply, stored);
 });
 
 async function shareByReceipt(receiptId: string, tenantId: string, reply: FastifyReply) {
@@ -428,20 +445,34 @@ const providerCatalog = [
 
 app.get("/v1/billing/providers", { preHandler: requireAuth }, async () => ({ providers: providerCatalog }));
 
-app.get("/v1/billing/settings", { preHandler: requireAuth }, async (request) => {
-  const tenantId = claims(request).tenantId;
+async function billingSettingsView(tenantId: string) {
   const [config, state] = await Promise.all([getTenantBillingConfig(tenantId), getBillingConnectionState(tenantId)]);
-  return { ...config, ...state, credentialConfigured: Boolean(config.credentialSecretRef) };
-});
+  // La referencia del secreto es un dato interno de la plataforma: no se expone.
+  const { credentialSecretRef: _secretRef, ...publicConfig } = config;
+  return { ...publicConfig, ...state, credentialConfigured: hasBillingCredential(config) };
+}
 
-app.patch("/v1/billing/settings", { preHandler: requireAuth }, async (request, reply) => {
+async function requireTenantAdmin(request: FastifyRequest, reply: FastifyReply) {
+  const session = claims(request);
+  const role = await getMembershipRole(session.tenantId, session.sub);
+  if (role !== "OWNER" && role !== "ADMIN") {
+    return reply.code(403).send({ message: "Solo el titular del negocio puede cambiar esta configuración." });
+  }
+}
+
+app.get("/v1/billing/settings", { preHandler: requireAuth }, async (request) => billingSettingsView(claims(request).tenantId));
+
+app.patch("/v1/billing/settings", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
+  // credentialSecretRef ya no se acepta desde la app: lo asigna operaciones.
   const parsed = z.object({
     providerCode: z.string(),
     environment: z.enum(["sandbox", "production"]),
-    providerAccountRef: z.string().max(200).optional(),
-    credentialSecretRef: z.string().regex(/^env:[A-Za-z0-9_]+$/).optional()
-  }).safeParse(request.body);
+    providerAccountRef: z.string().max(200).optional()
+  }).strict().safeParse(request.body);
   if (!parsed.success || !validProviders.has(parsed.data.providerCode as BillingProviderCode)) return reply.code(400).send({ message: "Configuración de proveedor inválida" });
+  if (parsed.data.environment === "production" && (process.env.BILLING_PRODUCTION_ENABLED ?? "false").toLowerCase() !== "true") {
+    return reply.code(409).send({ message: "La emisión en producción todavía no está habilitada en FAKTU." });
+  }
   const tenantId = claims(request).tenantId;
   const current = await getTenantBillingConfig(tenantId);
   await updateTenantBillingConfig({
@@ -449,18 +480,17 @@ app.patch("/v1/billing/settings", { preHandler: requireAuth }, async (request, r
     providerCode: parsed.data.providerCode as BillingProviderCode,
     environment: parsed.data.environment as BillingEnvironment,
     providerAccountRef: parsed.data.providerAccountRef,
-    credentialSecretRef: parsed.data.credentialSecretRef ?? current.credentialSecretRef
+    credentialSecretRef: current.credentialSecretRef
   });
-  const [config, state] = await Promise.all([getTenantBillingConfig(tenantId), getBillingConnectionState(tenantId)]);
-  return { ...config, ...state, credentialConfigured: Boolean(config.credentialSecretRef) };
+  return billingSettingsView(tenantId);
 });
 
-app.post("/v1/billing/test-connection", { preHandler: requireAuth }, async (request, reply) => {
+app.post("/v1/billing/test-connection", { preHandler: [requireAuth, requireTenantAdmin] }, async (request, reply) => {
   const tenantId = claims(request).tenantId;
   try {
     const result = await billingService.health(tenantId);
     const ok = result.status === "UP";
-    const message = ok ? "Conexión verificada correctamente." : result.status === "DEGRADED" ? "La conexión respondió, pero necesita revisión." : "No pudimos conectar con el proveedor.";
+    const message = ok ? "Conexión verificada correctamente." : result.message ?? (result.status === "DEGRADED" ? "La conexión respondió, pero necesita revisión." : "No pudimos conectar con el proveedor.");
     await recordBillingConnectionTest(tenantId, ok, message);
     return reply.code(ok ? 200 : 503).send({ ok, status: result.status, provider: result.providerCode, message });
   } catch (error) {
@@ -478,3 +508,23 @@ app.post("/v1/pse/authorization-session", { preHandler: requireAuth }, async () 
 
 const port = Number(process.env.API_PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
+
+// Reintentos/conciliación en el servidor para comprobantes que quedaron
+// pendientes (respuesta perdida, proveedor caído), sin depender del celular.
+const workerIntervalMs = Number(process.env.RECEIPT_WORKER_INTERVAL_MS ?? 60_000);
+if ((process.env.RECEIPT_WORKER_ENABLED ?? "true").toLowerCase() === "true" && workerIntervalMs > 0) {
+  let running = false;
+  const timer = setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      const processed = await processPendingReceipts(billingService);
+      if (processed.length) app.log.info({ processed }, "pending receipts processed");
+    } catch (error) {
+      app.log.error({ error }, "pending receipts worker failed");
+    } finally {
+      running = false;
+    }
+  }, workerIntervalMs);
+  timer.unref();
+}

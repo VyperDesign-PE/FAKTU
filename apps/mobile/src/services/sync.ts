@@ -1,3 +1,4 @@
+import { isFinalReceiptStatus } from "../domain/types";
 import { getQueue, patchReceipt } from "../storage/receiptQueue";
 import { submitReceipt } from "./api";
 
@@ -9,26 +10,41 @@ export async function syncPendingReceipts(scope: string) {
 
   try {
     const queue = await getQueue(scope);
-    const pending = queue.filter((r) => r.status === "PENDING" || r.status === "ERROR");
+    // Incluye SYNCING: si la app se cerró en pleno envío, la venta no debe quedar
+    // colgada. El servidor es idempotente por clientTransactionId.
+    const pending = queue.filter((r) => !isFinalReceiptStatus(r.status));
 
     for (const receipt of pending) {
       await patchReceipt(scope, receipt.clientTransactionId, { status: "SYNCING", errorMessage: undefined });
       try {
         const result = await submitReceipt(receipt);
-        if (result.status === "PENDING") {
-          await patchReceipt(scope, receipt.clientTransactionId, {
-            status: "PENDING",
-            errorMessage: result.message ?? "El proveedor continúa procesando el comprobante."
-          });
-          continue;
+        switch (result.status) {
+          case "ACCEPTED":
+            await patchReceipt(scope, receipt.clientTransactionId, {
+              status: "ACCEPTED",
+              officialNumber: result.officialNumber,
+              errorMessage: undefined
+            });
+            break;
+          case "REJECTED":
+            await patchReceipt(scope, receipt.clientTransactionId, {
+              status: "REJECTED",
+              officialNumber: result.officialNumber,
+              errorMessage: result.message ?? "El comprobante fue rechazado."
+            });
+            break;
+          case "PENDING":
+            await patchReceipt(scope, receipt.clientTransactionId, {
+              status: "PENDING",
+              errorMessage: result.message ?? "El proveedor continúa procesando el comprobante."
+            });
+            break;
+          default:
+            await patchReceipt(scope, receipt.clientTransactionId, {
+              status: "ERROR",
+              errorMessage: result.message ?? "No pudimos emitir el comprobante. Se reintentará."
+            });
         }
-
-        if (!result.officialNumber) throw new Error("El proveedor no devolvió el número oficial del comprobante.");
-        await patchReceipt(scope, receipt.clientTransactionId, {
-          status: "ACCEPTED",
-          officialNumber: result.officialNumber,
-          errorMessage: undefined
-        });
       } catch (error) {
         await patchReceipt(scope, receipt.clientTransactionId, {
           status: "ERROR",

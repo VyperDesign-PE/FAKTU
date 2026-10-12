@@ -6,6 +6,7 @@ import type {
   ProviderHealth
 } from "../contracts.js";
 import { amountInWordsPen } from "../amountInWords.js";
+import { IGV_PERCENT, priceItems } from "../../receipts/pricing.js";
 
 export type ApiPeruBillingProviderOptions = {
   baseUrl?: string;
@@ -44,11 +45,6 @@ type ApiPeruStatusResponse = {
   cdrZip?: string;
   cdrResponse?: ApiPeruCdrResponse;
 };
-
-function round(value: number, decimals = 2) {
-  const factor = 10 ** decimals;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
-}
 
 function formatLimaIso(value: string) {
   const date = new Date(value);
@@ -107,25 +103,28 @@ export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: Billi
     throw new Error("Para emitir una factura el cliente debe tener RUC.");
   }
 
-  const details = command.items.map((item) => {
-    const quantity = round(item.quantity, 4);
-    const grossUnit = round(item.unitPrice, 6);
-    const netUnit = round(grossUnit / 1.18, 6);
-    const base = round(netUnit * quantity, 2);
-    const igv = round(base * 0.18, 2);
+  // Detalle y cabecera salen del mismo cálculo, así la suma de líneas cuadra
+  // exactamente con mtoOperGravadas / mtoIGV / mtoImpVenta.
+  const priced = priceItems(command.items);
+  if (Math.abs(priced.total - command.total) > 0.01) {
+    throw new Error("El total del comprobante no coincide con el detalle. No se envió a SUNAT.");
+  }
+
+  const details = command.items.map((item, index) => {
+    const line = priced.lines[index];
     return {
       ...(item.sku ? { codProducto: item.sku } : {}),
       unidad: item.unitCode || "NIU",
       descripcion: item.description,
-      cantidad: quantity,
-      mtoValorUnitario: netUnit,
-      mtoValorVenta: base,
-      mtoBaseIgv: base,
-      porcentajeIgv: 18,
-      igv,
+      cantidad: line.quantity,
+      mtoValorUnitario: line.unitValue,
+      mtoValorVenta: line.lineSubtotal,
+      mtoBaseIgv: line.lineSubtotal,
+      porcentajeIgv: IGV_PERCENT,
+      igv: line.lineIgv,
       tipAfeIgv: 10,
-      totalImpuestos: igv,
-      mtoPrecioUnitario: grossUnit
+      totalImpuestos: line.lineIgv,
+      mtoPrecioUnitario: line.unitPrice
     };
   });
 
@@ -140,15 +139,27 @@ export function mapCommandToApiPeru(command: IssueDocumentCommand, issuer: Billi
     tipoMoneda: command.currency,
     client: customerPayload(command),
     company: companyPayload(issuer),
-    mtoOperGravadas: round(command.subtotal, 2),
-    mtoIGV: round(command.igv, 2),
-    valorVenta: round(command.subtotal, 2),
-    totalImpuestos: round(command.igv, 2),
-    subTotal: round(command.total, 2),
-    mtoImpVenta: round(command.total, 2),
+    mtoOperGravadas: priced.subtotal,
+    mtoIGV: priced.igv,
+    valorVenta: priced.subtotal,
+    totalImpuestos: priced.igv,
+    subTotal: priced.total,
+    mtoImpVenta: priced.total,
     details,
-    legends: [{ code: "1000", value: amountInWordsPen(command.total) }]
+    legends: [{ code: "1000", value: amountInWordsPen(priced.total) }]
   };
+}
+
+/**
+ * SUNAT responde 1033 ("registrado previamente") cuando la misma serie y
+ * correlativo ya fue recibida, por ejemplo si reenviamos tras perder la
+ * respuesta. No es un rechazo: hay que conciliar por estado.
+ */
+export function isAlreadyRegisteredResponse(payload: ApiPeruSendResponse) {
+  const codes = [payload.error?.code, payload.sunatResponse?.error?.code, payload.sunatResponse?.cdrResponse?.code];
+  if (codes.some((code) => String(code ?? "").trim() === "1033")) return true;
+  const text = [payload.message, payload.error?.message, payload.sunatResponse?.error?.message, payload.sunatResponse?.cdrResponse?.description].join(" ");
+  return /registrado previamente/i.test(text);
 }
 
 function messageFromResponse(payload: ApiPeruSendResponse | ApiPeruStatusResponse, fallback: string) {
@@ -221,6 +232,15 @@ export class ApiPeruBillingProvider implements BillingProvider {
         status: "PENDING",
         officialNumber: `${command.series}-${command.correlative}`,
         message: messageFromResponse(payload, `APIsPERU respondio HTTP ${response.status}; se conciliara el estado antes de reintentar.`),
+        artifacts: { rawResponse: payload }
+      };
+    }
+    if (isAlreadyRegisteredResponse(payload)) {
+      return {
+        providerCode: this.code,
+        status: "PENDING",
+        officialNumber: `${command.series}-${command.correlative}`,
+        message: "SUNAT ya había recibido este comprobante; se consultará su estado.",
         artifacts: { rawResponse: payload }
       };
     }

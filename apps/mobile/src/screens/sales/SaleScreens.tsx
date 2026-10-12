@@ -164,10 +164,14 @@ export function EmissionResultScreen({ navigation }: P<"EmissionResult">) {
   const { lastReceipt, queue } = useApp();
   const current = queue.find((r) => r.clientTransactionId === lastReceipt?.clientTransactionId) ?? lastReceipt;
   const accepted = current?.status === "ACCEPTED";
-  return <Screen title={accepted ? "¡Comprobante emitido!" : "Venta registrada"} subtitle={accepted ? "SUNAT/PSE aceptó el comprobante en este entorno de prueba." : "El comprobante se está procesando."}>
-    <View style={styles.resultIcon}><Text style={styles.resultCheck}>{accepted ? "✓" : "…"}</Text></View>
-    <Card tone={accepted ? "success" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : "Pendiente"} /></Card>
-    <PrimaryButton label="COMPARTIR COMPROBANTE" onPress={() => navigation.navigate("ShareReceipt")} tone="success" />
+  const rejected = current?.status === "REJECTED";
+  const title = accepted ? "¡Comprobante emitido!" : rejected ? "Comprobante rechazado" : "Venta registrada";
+  const subtitle = accepted ? "El proveedor de facturación aceptó el comprobante." : rejected ? "Revisa el motivo y registra la venta nuevamente." : "El comprobante se está procesando.";
+  return <Screen title={title} subtitle={subtitle}>
+    <View style={styles.resultIcon}><Text style={styles.resultCheck}>{accepted ? "✓" : rejected ? "✕" : "…"}</Text></View>
+    <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} /></Card>
+    {current?.errorMessage ? <Card tone={rejected ? "danger" : "info"}><Text>{current.errorMessage}</Text></Card> : null}
+    {rejected ? null : <PrimaryButton label="COMPARTIR COMPROBANTE" onPress={() => navigation.navigate("ShareReceipt")} tone="success" />}
     <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "NewSale" }] })} tone="outline" />
   </Screen>;
 }

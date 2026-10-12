@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "Comprobante Fácil",
-    "slug": "comprobante-facil",
-    "version": "0.3.0",
+    "name": "FAKTU",
+    "slug": "faktu",
+    "version": "0.13.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
-      "package": "pe.app.comprobantefacil"
+      "package": "pe.faktu.app"
     },
     "ios": {
-      "bundleIdentifier": "pe.app.comprobantefacil"
+      "bundleIdentifier": "pe.faktu.app"
     }
   }
 }

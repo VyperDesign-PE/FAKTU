@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: faktu_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d faktu_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (API y app móvil)
+        run: npm run typecheck
+      - name: Pruebas unitarias
+        run: npm test
+      - name: Integración de emisión (PostgreSQL)
+        run: npm run test:integration
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/faktu_test
+          ALLOW_DB_TESTS: "true"
+      - name: Crear base E2E
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "create database faktu_e2e"
+      - name: E2E completo
+        run: scripts/run-e2e-local.sh
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/faktu_e2e

@@ -1,6 +1,6 @@
 {
   "name": "@app/api",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,9 @@
     "test:sunat-ruc-parser": "tsx src/jobs/testSunatRucParser.ts",
     "test:e2e": "tsx src/e2e/fullFlow.ts",
     "test:apisperu-adapter": "tsx src/jobs/testApiPeruAdapter.ts",
-    "test:apisperu-sandbox": "tsx src/jobs/testApiPeruSandbox.ts"
+    "test:apisperu-sandbox": "tsx src/jobs/testApiPeruSandbox.ts",
+    "test:unit": "tsx src/tests/unit.ts",
+    "test:integration": "tsx src/tests/receiptIssuer.integration.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

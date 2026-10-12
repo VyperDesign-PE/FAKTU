@@ -32,6 +32,15 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   return payload as T;
 }
 
+async function rawRequest(path: string, options: RequestInit = {}, token?: string) {
+  const headers = new Headers(options.headers);
+  if (options.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  const response = await fetch(`${apiBase}${path}`, { ...options, headers });
+  const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+  return { status: response.status, body };
+}
+
 async function seedRucFixture() {
   if (process.env.ALLOW_E2E_SEED !== "true") throw new Error("ALLOW_E2E_SEED=true is required");
   await runMigrations();
@@ -230,7 +239,78 @@ async function main() {
   );
   assert.ok(processed.some((item) => item.status === "SENT"));
 
-  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery");
+  log("Rejecting a sale whose total does not match its items");
+  const tampered = await rawRequest("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-tampered-${suffix}`,
+      temporaryNumber: "VT-E2E-TAMPERED",
+      documentType: "BOLETA",
+      total: 1,
+      items: [{ id: "x", name: "LAPTOP", quantity: 1, unitPrice: 100 }]
+    })
+  }, tokenA);
+  assert.equal(tampered.status, 422);
+  assert.equal(tampered.body.code, "TOTAL_MISMATCH");
+  assert.equal(tampered.body.retryable, false);
+
+  log("Rejecting a factura without RUC before reserving a correlative");
+  const facturaSinRuc = await rawRequest("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-factura-sin-ruc-${suffix}`,
+      temporaryNumber: "VT-E2E-F0",
+      documentType: "FACTURA",
+      total: 11.8,
+      items: [{ id: "e2e-product-1", name: "GASEOSA E2E", quantity: 1, unitPrice: 11.8 }]
+    })
+  }, tokenA);
+  assert.equal(facturaSinRuc.status, 422);
+  assert.equal(facturaSinRuc.body.code, "FACTURA_REQUIRES_RUC");
+  const factura = await request<{ officialNumber: string; status: string }>("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-factura-ok-${suffix}`,
+      temporaryNumber: "VT-E2E-F1",
+      documentType: "FACTURA",
+      total: 11.8,
+      customer: { documentType: "RUC", documentNumber: E2E_RUC, name: E2E_RUC_NAME },
+      items: [{ id: "e2e-product-1", name: "GASEOSA E2E", quantity: 1, unitPrice: 11.8 }]
+    })
+  }, tokenA);
+  assert.equal(factura.status, "ACCEPTED");
+  assert.equal(factura.officialNumber, "F001-00000001", "The rejected factura must not consume a correlative");
+
+  log("Rejecting a boleta over S/ 700 without customer");
+  const boletaGrande = await rawRequest("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-boleta-grande-${suffix}`,
+      temporaryNumber: "VT-E2E-B700",
+      documentType: "BOLETA",
+      total: 800,
+      items: [{ id: "x", name: "TV", quantity: 1, unitPrice: 800 }]
+    })
+  }, tokenA);
+  assert.equal(boletaGrande.status, 422);
+  assert.equal(boletaGrande.body.code, "BOLETA_REQUIRES_CUSTOMER");
+
+  log("Blocking billing credential and production tampering");
+  const secretRef = await rawRequest("/v1/billing/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ providerCode: "apisperu", environment: "sandbox", credentialSecretRef: "env:JWT_SECRET" })
+  }, tokenA);
+  assert.equal(secretRef.status, 400, "Tenants must not choose which server secret is used");
+  const production = await rawRequest("/v1/billing/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ providerCode: "apisperu", environment: "production" })
+  }, tokenA);
+  assert.equal(production.status, 409, "Production must stay disabled until the platform enables it");
+  const settings = await request<Record<string, unknown>>("/v1/billing/settings", {}, tokenA);
+  assert.equal(settings.credentialSecretRef, undefined, "The secret reference must not be exposed");
+  assert.equal(settings.environment, "sandbox");
+
+  log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security");
 }
 
 main()

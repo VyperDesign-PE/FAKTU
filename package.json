@@ -1,7 +1,7 @@
 {
-  "name": "aplicativo-facturacion-mvp",
+  "name": "faktu",
   "private": true,
-  "version": "0.12.2",
+  "version": "0.13.0",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -16,6 +16,9 @@
     "e2e:up": "docker compose -f infra/docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e",
     "e2e:down": "docker compose -f infra/docker-compose.e2e.yml down -v",
     "test:apisperu-adapter": "npm --workspace @app/api run test:apisperu-adapter",
-    "test:apisperu-sandbox": "npm --workspace @app/api run test:apisperu-sandbox"
+    "test:apisperu-sandbox": "npm --workspace @app/api run test:apisperu-sandbox",
+    "test:unit": "npm --workspace @app/api run test:unit",
+    "test:integration": "npm --workspace @app/api run test:integration",
+    "test": "npm run test:unit && npm run test:apisperu-adapter && npm run test:sunat-ruc-parser"
   }
 }

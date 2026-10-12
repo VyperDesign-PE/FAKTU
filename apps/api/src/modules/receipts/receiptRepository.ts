@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "../../db/client.js";
 import { upsertCustomer } from "../customers/customerRepository.js";
 import type { BillingDocumentType, BillingIssueResult, IssueDocumentCommand } from "../billing/contracts.js";
+import { IGV_PERCENT, priceItems } from "./pricing.js";
 
 export type ReceiptStatus = "PENDIENTE" | "ENVIANDO" | "ACEPTADO" | "OBSERVADO" | "RECHAZADO" | "ERROR";
 
@@ -96,10 +97,6 @@ type ReceiptItemRow = {
   unit_price: string | number;
   unit_code: string;
 };
-
-function money(value: number) {
-  return Number(value.toFixed(2));
-}
 
 function defaultSeries(documentType: BillingDocumentType) {
   return documentType === "BOLETA"
@@ -233,9 +230,9 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
     customerId = customer.id;
   }
 
-  const total = money(input.total);
-  const subtotal = money(total / 1.18);
-  const igv = money(total - subtotal);
+  // Los montos se recalculan siempre en el servidor a partir de los ítems.
+  const priced = priceItems(input.items);
+  const { subtotal, igv, total } = priced;
   const series = defaultSeries(input.documentType);
   const receiptId = randomUUID();
 
@@ -281,7 +278,7 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
         ) values (
           ${receiptId}, ${input.tenantId}, ${customerId ?? null}, ${input.clientTransactionId}, ${input.temporaryNumber},
           ${input.documentType}, ${series}, ${correlative}, now(), 'PEN',
-          ${subtotal}, ${igv}, ${total}, 18.00, 'PENDIENTE',
+          ${subtotal}, ${igv}, ${total}, ${IGV_PERCENT}, 'PENDIENTE',
           ${input.customer?.documentType ?? null}, ${input.customer?.documentNumber ?? null},
           ${input.customer?.name ?? null}, ${input.customer?.address ?? null}
         )
@@ -293,17 +290,15 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
           provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
       `;
 
-      for (const item of input.items) {
-        const lineTotal = money(item.quantity * item.unitPrice);
-        const lineSubtotal = money(lineTotal / 1.18);
-        const lineIgv = money(lineTotal - lineSubtotal);
+      for (const [index, item] of input.items.entries()) {
+        const line = priced.lines[index];
         await tx`
           insert into receipt_items (
             id, receipt_id, product_ref, description, quantity, unit_code,
             unit_price, line_subtotal, line_igv, line_total, igv_rate
           ) values (
-            ${randomUUID()}, ${receiptId}, ${item.id}, ${item.name}, ${item.quantity}, ${item.unit ?? "NIU"},
-            ${item.unitPrice}, ${lineSubtotal}, ${lineIgv}, ${lineTotal}, 18.00
+            ${randomUUID()}, ${receiptId}, ${item.id}, ${item.name}, ${line.quantity}, ${item.unit ?? "NIU"},
+            ${line.unitPrice}, ${line.lineSubtotal}, ${line.lineIgv}, ${line.lineTotal}, ${IGV_PERCENT}
           )
         `;
       }
@@ -324,12 +319,33 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
   }
 }
 
-export async function markReceiptSending(tenantId: string, receiptId: string): Promise<void> {
-  await sql`
+const FINAL_STATUSES: ReceiptStatus[] = ["ACEPTADO", "RECHAZADO"];
+
+export function isFinalStatus(status: ReceiptStatus) {
+  return FINAL_STATUSES.includes(status);
+}
+
+/** Segundos tras los cuales un envío ENVIANDO se considera abandonado (proceso caído). */
+const STALE_SENDING_SECONDS = Number(process.env.RECEIPT_STALE_SENDING_SECONDS ?? 120);
+
+/**
+ * Reserva atómicamente el derecho a enviar el comprobante al proveedor.
+ * Solo una petición a la vez puede pasar a ENVIANDO; las demás reciben null
+ * y deben responder con el estado actual en vez de enviar en paralelo.
+ */
+export async function claimReceiptForSending(tenantId: string, receiptId: string): Promise<ReceiptRecord | null> {
+  const rows = await sql<ReceiptRow[]>`
     update receipts
     set sunat_status = 'ENVIANDO', attempt_count = attempt_count + 1, last_attempt_at = now(), updated_at = now()
     where tenant_id = ${tenantId} and id = ${receiptId}
+      and (
+        sunat_status in ('PENDIENTE', 'ERROR', 'OBSERVADO')
+        or (sunat_status = 'ENVIANDO' and (last_attempt_at is null or last_attempt_at < now() - make_interval(secs => ${STALE_SENDING_SECONDS})))
+      )
+    returning id
   `;
+  if (!rows[0]) return null;
+  return getReceiptById(tenantId, receiptId);
 }
 
 export async function markReceiptError(tenantId: string, receiptId: string, message: string): Promise<ReceiptRecord> {
@@ -337,6 +353,7 @@ export async function markReceiptError(tenantId: string, receiptId: string, mess
     update receipts
     set sunat_status = 'ERROR', provider_message = ${message}, updated_at = now()
     where tenant_id = ${tenantId} and id = ${receiptId}
+      and sunat_status not in ('ACEPTADO', 'RECHAZADO')
     returning id, tenant_id, customer_id, client_transaction_id, temporary_number,
       document_type, series, correlative, official_number, issue_date,
       subtotal, igv, total, sunat_status,
@@ -344,6 +361,11 @@ export async function markReceiptError(tenantId: string, receiptId: string, mess
       provider_code, provider_document_id, provider_message,
       provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
   `;
+  if (!rows[0]) {
+    const current = await getReceiptById(tenantId, receiptId);
+    if (!current) throw new Error("Comprobante no encontrado");
+    return current;
+  }
   return mapReceipt(rows[0]);
 }
 
@@ -362,6 +384,9 @@ export async function applyBillingResult(tenantId: string, receiptId: string, re
       provider_cdr_url = ${result.cdrUrl ?? null},
       updated_at = now()
     where tenant_id = ${tenantId} and id = ${receiptId}
+      -- Un estado final (aceptado/rechazado) nunca vuelve a pendiente por una
+      -- respuesta tardía o una conciliación concurrente.
+      and sunat_status not in ('ACEPTADO', 'RECHAZADO')
     returning id, tenant_id, customer_id, client_transaction_id, temporary_number,
       document_type, series, correlative, official_number, issue_date,
       subtotal, igv, total, sunat_status,
@@ -369,6 +394,12 @@ export async function applyBillingResult(tenantId: string, receiptId: string, re
       provider_code, provider_document_id, provider_message,
       provider_pdf_url, provider_xml_url, provider_cdr_url, attempt_count
   `;
+
+  if (!rows[0]) {
+    const current = await getReceiptById(tenantId, receiptId);
+    if (!current) throw new Error("Comprobante no encontrado");
+    return current;
+  }
 
   if (result.artifacts) {
     await sql`
@@ -389,7 +420,9 @@ export async function applyBillingResult(tenantId: string, receiptId: string, re
     `;
   }
 
-  return mapReceipt(rows[0]);
+  const stored = mapReceipt(rows[0]);
+  stored.items = await getReceiptItems(receiptId);
+  return stored;
 }
 
 export async function buildBillingCommand(receipt: ReceiptRecord): Promise<IssueDocumentCommand> {

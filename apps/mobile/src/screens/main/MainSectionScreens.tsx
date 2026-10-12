@@ -79,7 +79,7 @@ export function POSVentaScreen({ navigation }: Props<"POSVenta">) {
 export function HistorialComprobantesScreen({ navigation }: Props<"HistorialComprobantes">) {
   const { queue, pendingCount } = useApp();
   const accepted = queue.filter((item) => item.status === "ACCEPTED").length;
-  const errors = queue.filter((item) => item.status === "ERROR").length;
+  const errors = queue.filter((item) => item.status === "ERROR" || item.status === "REJECTED").length;
 
   return (
     <ResponsiveShell

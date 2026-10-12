@@ -41,9 +41,10 @@ export function TemporaryReceiptScreen({ navigation }: P<"TemporaryReceipt">) {
 export function PendingReceiptsScreen({ navigation }: P<"PendingReceipts">) {
   const { queue, online } = useApp();
   const pending = queue.filter((r) => r.status !== "ACCEPTED");
+  const retryable = pending.filter((r) => r.status !== "REJECTED");
   return <Screen title="Pendientes de envío" subtitle={pending.length ? "Se enviarán automáticamente cuando haya conexión." : "No tienes comprobantes pendientes."}>
-    {pending.map((r) => <Card key={r.clientTransactionId} tone={r.status === "ERROR" ? "danger" : "warning"}><InfoRow label="Constancia" value={r.temporaryNumber} /><InfoRow label="Tipo" value={r.documentType} /><InfoRow label="Total" value={`S/ ${r.total.toFixed(2)}`} /><InfoRow label="Estado" value={r.status === "ERROR" ? "Revisar" : r.status === "SYNCING" ? "Enviando" : "Pendiente"} />{r.errorMessage ? <Text style={styles.error}>{r.errorMessage}</Text> : null}</Card>)}
-    <PrimaryButton label={online ? "SINCRONIZAR AHORA" : "SIN INTERNET: SE ENVIARÁ DESPUÉS"} disabled={!online || !pending.length} onPress={() => navigation.navigate("Syncing")} />
+    {pending.map((r) => <Card key={r.clientTransactionId} tone={r.status === "ERROR" || r.status === "REJECTED" ? "danger" : "warning"}><InfoRow label="Constancia" value={r.temporaryNumber} /><InfoRow label="Tipo" value={r.documentType} /><InfoRow label="Total" value={`S/ ${r.total.toFixed(2)}`} /><InfoRow label="Estado" value={r.status === "REJECTED" ? "Rechazado" : r.status === "ERROR" ? "Revisar" : r.status === "SYNCING" ? "Enviando" : "Pendiente"} />{r.errorMessage ? <Text style={styles.error}>{r.errorMessage}</Text> : null}</Card>)}
+    <PrimaryButton label={online ? "SINCRONIZAR AHORA" : "SIN INTERNET: SE ENVIARÁ DESPUÉS"} disabled={!online || !retryable.length} onPress={() => navigation.navigate("Syncing")} />
     <PrimaryButton label="VOLVER AL INICIO" onPress={() => navigation.navigate("Dashboard")} tone="outline" />
   </Screen>;
 }

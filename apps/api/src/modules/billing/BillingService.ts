@@ -1,8 +1,33 @@
 import type { BillingIssuer, BillingIssueResult, IssueDocumentCommand } from "./contracts.js";
+import type { BillingProvider } from "./BillingProvider.js";
 import { createBillingProvider } from "./providerFactory.js";
 import { getTenantBillingConfig } from "./tenantBillingConfigRepository.js";
 import { resolveBillingCredential } from "./secretResolver.js";
 import { getBusiness } from "../tenants/tenantRepository.js";
+import type { TenantBillingConfig } from "./contracts.js";
+
+export class BillingConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BillingConfigError";
+  }
+}
+
+function flag(name: string) {
+  return (process.env[name] ?? "false").toLowerCase() === "true";
+}
+
+/**
+ * Barreras para no entregar comprobantes sin validez tributaria a un cliente real.
+ */
+export function assertIssuingAllowed(config: TenantBillingConfig) {
+  if (config.providerCode === "mock" && process.env.NODE_ENV === "production" && !flag("ALLOW_MOCK_BILLING")) {
+    throw new BillingConfigError("Este negocio aún no tiene activo un proveedor de facturación electrónica. Contacta a soporte.");
+  }
+  if (config.environment === "production" && !flag("BILLING_PRODUCTION_ENABLED")) {
+    throw new BillingConfigError("La emisión en producción todavía no está habilitada en FAKTU.");
+  }
+}
 
 async function runtimeForTenant(tenantId: string) {
   const config = await getTenantBillingConfig(tenantId);
@@ -28,6 +53,7 @@ async function runtimeForTenant(tenantId: string) {
 export class BillingService {
   async issueDocument(command: IssueDocumentCommand): Promise<BillingIssueResult> {
     const runtime = await runtimeForTenant(command.tenantId);
+    assertIssuingAllowed(runtime.config);
     const provider = createBillingProvider(runtime.config, runtime);
     return provider.issueDocument({ ...command, issuer: command.issuer ?? runtime.issuer });
   }
@@ -46,9 +72,14 @@ export class BillingService {
     return provider.getDocumentStatus({ ...command, issuer: command.issuer ?? runtime.issuer });
   }
 
-  async health(tenantId: string) {
-    const runtime = await runtimeForTenant(tenantId);
-    const provider = createBillingProvider(runtime.config, runtime);
-    return { providerCode: provider.code, status: await provider.health() };
+  async health(tenantId: string): Promise<{ providerCode: string; status: Awaited<ReturnType<BillingProvider["health"]>>; message?: string }> {
+    const config = await getTenantBillingConfig(tenantId);
+    try {
+      const runtime = await runtimeForTenant(tenantId);
+      const provider = createBillingProvider(runtime.config, runtime);
+      return { providerCode: provider.code, status: await provider.health() };
+    } catch (error) {
+      return { providerCode: config.providerCode, status: "DOWN", message: error instanceof Error ? error.message : undefined };
+    }
   }
 }
