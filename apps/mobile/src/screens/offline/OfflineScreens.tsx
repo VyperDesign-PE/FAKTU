@@ -15,7 +15,7 @@ export function OfflineHomeScreen({ navigation }: P<"OfflineHome">) {
   return <Screen title="Sin Internet" subtitle="Puedes seguir vendiendo. La aplicación guardará tus operaciones.">
     <Card tone="warning"><Text style={styles.big}>⌁</Text><Text style={styles.title}>Modo sin conexión activo</Text><Text style={styles.body}>Cuando vuelva Internet, enviaremos automáticamente los comprobantes pendientes.</Text></Card>
     <Card><InfoRow label="Pendientes" value={String(pendingCount)} /><InfoRow label="Tus ventas" value="Seguras en el celular" /></Card>
-    <PrimaryButton label="HACER UNA VENTA" onPress={() => navigation.navigate("OfflineSale")} />
+    <PrimaryButton label="HACER UNA VENTA" onPress={() => navigation.navigate("POSVenta")} />
     <PrimaryButton label="VER PENDIENTES" onPress={() => navigation.navigate("PendingReceipts")} tone="outline" />
   </Screen>;
 }
@@ -23,7 +23,7 @@ export function OfflineHomeScreen({ navigation }: P<"OfflineHome">) {
 export function OfflineSaleScreen({ navigation }: P<"OfflineSale">) {
   return <Screen title="Venta sin Internet" subtitle="El flujo de venta es el mismo. Al final entregaremos una constancia temporal.">
     <Card tone="warning"><Text style={styles.title}>Puedes atender con normalidad</Text><Text style={styles.body}>Productos, cantidades, cliente y total quedarán guardados. El comprobante se enviará al recuperar conexión.</Text></Card>
-    <PrimaryButton label="CONTINUAR CON LA VENTA" onPress={() => navigation.replace("NewSale")} />
+    <PrimaryButton label="CONTINUAR CON LA VENTA" onPress={() => navigation.replace("POSVenta")} />
   </Screen>;
 }
 
@@ -34,7 +34,7 @@ export function TemporaryReceiptScreen({ navigation }: P<"TemporaryReceipt">) {
     <Card tone="warning"><Text style={styles.tempLabel}>CONSTANCIA TEMPORAL</Text><Text style={styles.tempNumber}>{lastReceipt?.temporaryNumber ?? "VT-000000"}</Text><Text style={styles.body}>Tu comprobante electrónico será enviado cuando vuelva la conexión.</Text></Card>
     <Card><InfoRow label="Fecha y hora" value={lastReceipt ? new Date(lastReceipt.createdAt).toLocaleString() : "-"} /><InfoRow label="Cliente" value={lastReceipt?.customer?.name ?? "Público general"} /><InfoRow label="Total" value={`S/ ${(lastReceipt?.total ?? 0).toFixed(2)}`} /></Card>
     <PrimaryButton label="COMPARTIR CONSTANCIA" onPress={() => showAlert("Constancia preparada", "En la siguiente integración podremos compartirla por Bluetooth, impresión local o cuando haya conexión.")} tone="outline" />
-    <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "OfflineSale" }] })} />
+    <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "POSVenta" }] })} />
     <PrimaryButton label="VER PENDIENTES" onPress={() => navigation.navigate("PendingReceipts")} tone="outline" />
   </Screen>;
 }

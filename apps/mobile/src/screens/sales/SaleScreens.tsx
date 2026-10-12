@@ -205,7 +205,7 @@ export function EmissionResultScreen({ navigation }: P<"EmissionResult">) {
     <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} />{current?.paymentMethod ? <InfoRow label="Pago" value={PAYMENT_METHODS.find((m) => m.value === current.paymentMethod)?.label ?? current.paymentMethod} /> : null}{current?.amountReceived !== undefined ? <InfoRow label="Vuelto" value={`S/ ${(current.amountReceived - current.total).toFixed(2)}`} /> : null}</Card>
     {current?.errorMessage ? <Card tone={rejected ? "danger" : "info"}><Text>{current.errorMessage}</Text></Card> : null}
     {rejected ? null : <PrimaryButton label="COMPARTIR COMPROBANTE" onPress={() => navigation.navigate("ShareReceipt")} tone="success" />}
-    <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "NewSale" }] })} tone="outline" />
+    <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "POSVenta" }] })} tone="outline" />
   </Screen>;
 }
 

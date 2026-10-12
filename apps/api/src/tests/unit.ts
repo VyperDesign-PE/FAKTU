@@ -5,6 +5,7 @@ import { isAllowedSecretRef, resolveBillingCredential, tenantSecretEnvName } fro
 import { assertIssuingAllowed, BillingConfigError } from "../modules/billing/BillingService.js";
 import { isAlreadyRegisteredResponse, mapCommandToApiPeru } from "../modules/billing/providers/ApiPeruBillingProvider.js";
 import type { BillingIssuer, IssueDocumentCommand, TenantBillingConfig } from "../modules/billing/contracts.js";
+import { stockDirectionFor } from "../modules/products/stockRepository.js";
 import { PRACTICE_SERIES } from "../modules/billing/practiceMode.js";
 
 const tests: Array<[string, () => void]> = [];
@@ -168,6 +169,14 @@ test("APIsPERU: no envía si el total guardado no coincide con el detalle", () =
 test("APIsPERU: 'registrado previamente' (1033) no es un rechazo", () => {
   assert.ok(isAlreadyRegisteredResponse({ sunatResponse: { success: false, error: { code: "1033", message: "El comprobante fue registrado previamente con otros datos" } } }));
   assert.ok(!isAlreadyRegisteredResponse({ sunatResponse: { success: false, error: { code: "2017", message: "El número de documento de identidad del receptor debe ser RUC" } } }));
+});
+
+test("Stock: las ventas descuentan; anulaciones y devoluciones reponen; el resto no mueve", () => {
+  assert.equal(stockDirectionFor("BOLETA"), -1);
+  assert.equal(stockDirectionFor("FACTURA"), -1);
+  for (const reason of ["01", "02", "06", "07"]) assert.equal(stockDirectionFor("NOTA_CREDITO", reason), 1);
+  assert.equal(stockDirectionFor("NOTA_CREDITO", "09"), 0, "Descuento: la mercadería no vuelve");
+  assert.equal(stockDirectionFor("NOTA_DEBITO", "01"), 0);
 });
 
 let failed = 0;

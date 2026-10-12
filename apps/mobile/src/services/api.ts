@@ -166,16 +166,75 @@ export async function updateRemoteBusiness(profile: BusinessProfile) {
 }
 
 export async function listRemoteProducts(): Promise<Product[]> {
-  const rows = await json<Array<{ clientProductId: string; name: string; unitPrice: number; unitCode: string; favorite: boolean }>>(
+  const rows = await json<Array<{ clientProductId: string; name: string; unitPrice: number; unitCode: string; favorite: boolean; stockQty: number | null; minStock: number }>>(
     await authorizedFetch("/v1/products")
   );
-  return rows.map((row) => ({ id: row.clientProductId, name: row.name, unitPrice: row.unitPrice, unit: row.unitCode, favorite: row.favorite }));
+  return rows.map((row) => ({ id: row.clientProductId, name: row.name, unitPrice: row.unitPrice, unit: row.unitCode, favorite: row.favorite, stockQty: row.stockQty, minStock: row.minStock }));
 }
 
 export async function upsertRemoteProduct(product: Product) {
   return json(await authorizedFetch(`/v1/products/${encodeURIComponent(product.id)}`, {
     method: "PUT",
-    body: JSON.stringify({ name: product.name, unitPrice: product.unitPrice, unitCode: product.unit, favorite: product.favorite })
+    body: JSON.stringify({ name: product.name, unitPrice: product.unitPrice, unitCode: product.unit, favorite: product.favorite, ...(product.minStock !== undefined ? { minStock: product.minStock } : {}) })
+  }));
+}
+
+export async function deleteRemoteProduct(id: string) {
+  const response = await authorizedFetch(`/v1/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!response.ok) await json(response);
+}
+
+export async function adjustRemoteStock(id: string, mode: "SET" | "ADD", quantity: number, note?: string) {
+  return json<{ stockQty: number }>(await authorizedFetch(`/v1/products/${encodeURIComponent(id)}/stock`, {
+    method: "POST",
+    body: JSON.stringify({ mode, quantity, ...(note ? { note } : {}) })
+  }));
+}
+
+export type StockMovement = { id: string; delta: number; balance: number; reason: string; note?: string; createdAt: string };
+
+export async function listStockMovements(id: string) {
+  return json<StockMovement[]>(await authorizedFetch(`/v1/products/${encodeURIComponent(id)}/movements`));
+}
+
+export type Insights = {
+  date: string;
+  today: { total: number; count: number };
+  yesterday: number;
+  sameDayLastWeek: number;
+  week: { total: number; series: Array<{ date: string; total: number; count: number }> };
+  topProducts: Array<{ name: string; quantity: number; revenue: number }>;
+  peakHour: number | null;
+  paymentMix: Array<{ method: string; total: number }>;
+  lowStock: Array<{ clientProductId: string; name: string; stockQty: number; minStock: number }>;
+  receivables: { total: number; customers: number; oldestDays: number };
+};
+
+export async function getInsights() {
+  return json<Insights>(await authorizedFetch("/v1/insights"));
+}
+
+export type Receivable = {
+  receiptId: string;
+  clientTransactionId: string;
+  number: string;
+  issueDate: string;
+  total: number;
+  paid: number;
+  balance: number;
+  customerName: string;
+  customerDocument?: string;
+  customerPhone?: string;
+};
+
+export async function listReceivables() {
+  return json<Receivable[]>(await authorizedFetch("/v1/receivables"));
+}
+
+export async function payReceivable(receiptId: string, amount: number, method: PaymentMethod) {
+  return json<{ balance: number }>(await authorizedFetch(`/v1/receivables/${receiptId}/payments`, {
+    method: "POST",
+    body: JSON.stringify({ amount, method })
   }));
 }
 
@@ -378,6 +437,7 @@ export type DailyClose = {
   voidings?: { count: number; total: number };
   netTotal: number;
   expectedCash: number;
+  receivableCollections?: Array<{ method: string; total: number; count: number }>;
   byDocumentType: { BOLETA: { count: number; total: number }; FACTURA: { count: number; total: number } };
   paymentMethods: Array<{ method: PaymentMethod; salesCount: number; sales: number; refunds: number; net: number }>;
 };

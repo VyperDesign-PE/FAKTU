@@ -19,7 +19,10 @@ import { lookupRucFromSources } from "./modules/customerLookup/rucLookupService.
 import { findSunatRuc, getSunatRucRegistryStatus } from "./modules/sunatRuc/sunatRucRegistryRepository.js";
 import { getCustomerById, searchCustomers, upsertCustomer } from "./modules/customers/customerRepository.js";
 import { getMonthlyLookupSummary } from "./modules/customers/documentLookupUsageRepository.js";
-import { listProducts, upsertProduct } from "./modules/products/productRepository.js";
+import { archiveProduct, listProducts, upsertProduct } from "./modules/products/productRepository.js";
+import { adjustStock, listStockMovements, StockError } from "./modules/products/stockRepository.js";
+import { listOpenReceivables, listReceivablePayments, ReceivableError, registerReceivablePayment } from "./modules/receivables/receivableRepository.js";
+import { businessInsights } from "./modules/insights/businessInsights.js";
 import {
   applyBillingResult,
   buildBillingCommand,
@@ -311,9 +314,57 @@ app.get("/v1/products", { preHandler: requireAuth }, async (request) => listProd
 
 app.put("/v1/products/:clientProductId", { preHandler: requireAuth }, async (request, reply) => {
   const params = z.object({ clientProductId: z.string().min(1).max(120) }).safeParse(request.params);
-  const body = z.object({ name: z.string().min(1), unitPrice: z.number().nonnegative(), unitCode: z.string().optional(), favorite: z.boolean().optional(), sku: z.string().optional() }).safeParse(request.body);
+  const body = z.object({ name: z.string().min(1), unitPrice: z.number().nonnegative(), unitCode: z.string().optional(), favorite: z.boolean().optional(), sku: z.string().optional(), minStock: z.number().nonnegative().optional() }).safeParse(request.body);
   if (!params.success || !body.success) return reply.code(400).send({ message: "Revisa los datos del producto." });
   return upsertProduct({ tenantId: claims(request).tenantId, clientProductId: params.data.clientProductId, ...body.data });
+});
+
+app.delete("/v1/products/:clientProductId", { preHandler: requireAuth }, async (request, reply) => {
+  const params = z.object({ clientProductId: z.string().min(1).max(120) }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Producto inválido." });
+  await archiveProduct(claims(request).tenantId, params.data.clientProductId);
+  return reply.code(204).send();
+});
+
+app.post("/v1/products/:clientProductId/stock", { preHandler: requireAuth }, async (request, reply) => {
+  const params = z.object({ clientProductId: z.string().min(1).max(120) }).safeParse(request.params);
+  const body = z.object({ mode: z.enum(["SET", "ADD"]), quantity: z.number().min(-1_000_000).max(1_000_000), note: z.string().max(200).optional() }).safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ message: "Revisa la cantidad de stock." });
+  if (body.data.mode === "SET" && body.data.quantity < 0) return reply.code(400).send({ message: "El stock no puede ser negativo." });
+  try {
+    return await adjustStock({ tenantId: claims(request).tenantId, clientProductId: params.data.clientProductId, ...body.data });
+  } catch (error) {
+    if (error instanceof StockError) return reply.code(error.status).send({ code: error.code, message: error.message });
+    throw error;
+  }
+});
+
+app.get("/v1/products/:clientProductId/movements", { preHandler: requireAuth }, async (request, reply) => {
+  const params = z.object({ clientProductId: z.string().min(1).max(120) }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Producto inválido." });
+  return listStockMovements(claims(request).tenantId, params.data.clientProductId);
+});
+
+app.get("/v1/insights", { preHandler: requireAuth }, async (request) => businessInsights(claims(request).tenantId));
+
+app.get("/v1/receivables", { preHandler: requireAuth }, async (request) => listOpenReceivables(claims(request).tenantId));
+
+app.get("/v1/receivables/:receiptId/payments", { preHandler: requireAuth }, async (request, reply) => {
+  const params = z.object({ receiptId: z.string().uuid() }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ message: "Venta inválida." });
+  return listReceivablePayments(claims(request).tenantId, params.data.receiptId);
+});
+
+app.post("/v1/receivables/:receiptId/payments", { preHandler: requireAuth }, async (request, reply) => {
+  const params = z.object({ receiptId: z.string().uuid() }).safeParse(request.params);
+  const body = z.object({ amount: z.number().positive(), method: z.enum(PAYMENT_METHODS), note: z.string().max(200).optional() }).safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ message: "Revisa el monto y el medio de pago del abono." });
+  try {
+    return await registerReceivablePayment({ tenantId: claims(request).tenantId, receiptId: params.data.receiptId, ...body.data });
+  } catch (error) {
+    if (error instanceof ReceivableError) return reply.code(error.status).send({ code: error.code, message: error.message });
+    throw error;
+  }
 });
 
 const receiptSchema = z.object({
@@ -389,6 +440,14 @@ app.post("/v1/receipts", { preHandler: requireAuth }, async (request, reply) => 
     }
     if (parsed.data.amountReceived !== undefined && (parsed.data.paymentMethod ?? "EFECTIVO") === "EFECTIVO" && parsed.data.amountReceived + 0.001 < serverTotal) {
       return reply.code(422).send({ code: "INSUFFICIENT_CASH", message: "El monto recibido es menor al total de la venta.", retryable: false });
+    }
+    if (parsed.data.paymentMethod === "CREDITO") {
+      if (parsed.data.documentType !== "BOLETA") {
+        return reply.code(422).send({ code: "CREDIT_ONLY_BOLETA", message: "Las ventas fiadas se registran con boleta. Para facturas al crédito usa el proveedor de facturación.", retryable: false });
+      }
+      if (!parsed.data.customer?.documentNumber || !parsed.data.customer.name?.trim()) {
+        return reply.code(422).send({ code: "CREDIT_REQUIRES_CUSTOMER", message: "Para fiar necesitas identificar al cliente (DNI y nombre).", retryable: false });
+      }
     }
     if (parsed.data.documentType === "FACTURA") {
       parsed.data.customer = await withFacturaAddress(parsed.data.customer);

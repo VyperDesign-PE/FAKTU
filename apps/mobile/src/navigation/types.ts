@@ -19,6 +19,9 @@ export type RootStackParamList = {
   POSVenta: undefined;
   HistorialComprobantes: undefined;
   Configuracion: undefined;
+  Productos: undefined;
+  ProductForm: { productId?: string } | undefined;
+  PorCobrar: undefined;
 
   Home: undefined;
   NewSale: undefined;

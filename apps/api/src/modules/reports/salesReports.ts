@@ -99,6 +99,16 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
     add((byMethod.get(row.payment_method) ?? byMethod.get("EFECTIVO")!).refunds, asReceipt);
   }
 
+  // Cobros de ventas fiadas realizados hoy: entran a caja según cómo pagó el cliente.
+  const collections = await sql<{ method: string; total: string; count: string }[]>`
+    select method, sum(amount) as total, count(*) as count
+    from receivable_payments
+    where tenant_id = ${tenantId} and created_at >= ${from} and created_at < ${to}
+    group by method
+  `;
+  const receivableCollections = collections.map((row) => ({ method: row.method, total: Number(row.total), count: Number(row.count) }));
+  const cashCollected = receivableCollections.find((row) => row.method === "EFECTIVO")?.total ?? 0;
+
   const paymentMethods = [...byMethod.entries()]
     .map(([method, data]) => ({
       method,
@@ -120,7 +130,8 @@ export async function dailyClose(tenantId: string, date = limaToday()) {
     voidings: view(voidings),
     netTotal: fromCents(sales.totalCents + debitNotes.totalCents - creditNotes.totalCents - voidings.totalCents),
     /** Efectivo que debería haber en caja por ventas del día (sin fondo inicial). */
-    expectedCash: paymentMethods.find((row) => row.method === "EFECTIVO")?.net ?? 0,
+    expectedCash: fromCents(cents(paymentMethods.find((row) => row.method === "EFECTIVO")?.net ?? 0) + cents(cashCollected)),
+    receivableCollections,
     byDocumentType: { BOLETA: view(byDocumentType.BOLETA), FACTURA: view(byDocumentType.FACTURA) },
     paymentMethods
   };

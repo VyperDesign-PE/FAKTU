@@ -29,7 +29,7 @@ export const DEBIT_NOTE_REASONS = {
 } as const;
 export type DebitNoteReasonCode = keyof typeof DEBIT_NOTE_REASONS;
 
-export const PAYMENT_METHODS = ["EFECTIVO", "YAPE", "PLIN", "TARJETA", "TRANSFERENCIA"] as const;
+export const PAYMENT_METHODS = ["EFECTIVO", "YAPE", "PLIN", "TARJETA", "TRANSFERENCIA", "CREDITO"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /** Documento al que hace referencia una nota de crédito. */

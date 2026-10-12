@@ -1,3 +1,4 @@
+import { applyStockForItems, stockDirectionFor } from "../products/stockRepository.js";
 import { randomUUID } from "node:crypto";
 import { sql } from "../../db/client.js";
 import { upsertCustomer } from "../customers/customerRepository.js";
@@ -415,6 +416,17 @@ export async function prepareReceipt(input: ReceiptInput): Promise<{ receipt: Re
         `;
       }
 
+      // Inventario: las ventas descuentan y las devoluciones/anulaciones reponen.
+      const stockDirection = stockDirectionFor(input.documentType, input.noteReasonCode);
+      if (stockDirection !== 0) {
+        await applyStockForItems(tx, {
+          tenantId: input.tenantId,
+          receiptId,
+          direction: stockDirection,
+          items: input.items.map((item) => ({ productRef: item.id, quantity: item.quantity }))
+        });
+      }
+
       return receiptId;
     });
 
@@ -546,7 +558,8 @@ export async function buildBillingCommand(receipt: ReceiptRecord): Promise<Issue
     subtotal: receipt.subtotal,
     igv: receipt.igv,
     total: receipt.total,
-    paymentMethod: receipt.paymentMethod,
+    // Una venta fiada aún no está cancelada: no se informa medio de pago al proveedor.
+    paymentMethod: receipt.paymentMethod === "CREDITO" ? undefined : receipt.paymentMethod,
     relatedDocument,
     noteReason: isNoteType(receipt.documentType)
       ? { code: receipt.noteReasonCode ?? "01", description: receipt.noteDescription || "ANULACION DE LA OPERACION" }

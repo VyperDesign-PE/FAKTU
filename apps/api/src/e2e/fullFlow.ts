@@ -634,6 +634,59 @@ async function main() {
   const guideCPdf = await fetch(guideCShare.pdfUrl.replace(/^https?:\/\/[^/]+/, apiBase));
   assert.match(Buffer.from(await guideCPdf.arrayBuffer()).toString("latin1"), /APISPERU-GUIA T001-1/, "Guide PDF must be the official APIsPERU representation");
 
+  log("Stock, fiado e insights");
+  const stockToken = tokenB;
+  await request(`/v1/products/arroz-1kg`, { method: "PUT", body: JSON.stringify({ name: "Arroz 1 kg", unitPrice: 4.5, favorite: true, minStock: 3 }) }, stockToken);
+  assert.equal((await rawRequest("/v1/products/arroz-1kg/stock", { method: "POST", body: JSON.stringify({ mode: "ADD", quantity: 5 }) }, stockToken)).status, 422, "ADD requires initial stock");
+  await request("/v1/products/arroz-1kg/stock", { method: "POST", body: JSON.stringify({ mode: "SET", quantity: 10, note: "Conteo inicial" }) }, stockToken);
+  const stSale = (id: string, extra: Record<string, unknown> = {}) => rawRequest("/v1/receipts", {
+    method: "POST",
+    body: JSON.stringify({
+      clientTransactionId: `e2e-stock-${id}-${suffix}`, temporaryNumber: `VT-${id}`, documentType: "BOLETA", total: 9,
+      items: [{ id: "arroz-1kg", name: "Arroz 1 kg", quantity: 2, unitPrice: 4.5 }], ...extra
+    })
+  }, stockToken);
+  const stCashSale = await stSale("1");
+  assert.ok(stCashSale.status === 200 || stCashSale.status === 202, `cash stSale: ${stCashSale.status}`);
+  let stProducts = await request<Array<{ clientProductId: string; stockQty: number | null; minStock: number }>>("/v1/products", {}, stockToken);
+  assert.equal(stProducts.find((p) => p.clientProductId === "arroz-1kg")?.stockQty, 8, "Sale decrements stock");
+
+  const stNoCustomer = await stSale("2", { paymentMethod: "CREDITO" });
+  assert.equal(stNoCustomer.status, 422);
+  assert.equal(stNoCustomer.body.code, "CREDIT_REQUIRES_CUSTOMER");
+  const stFiado = await stSale("3", { paymentMethod: "CREDITO", customer: { documentType: "DNI", documentNumber: "12345678", name: "DOÑA ROSA", phone: "987654321" } });
+  assert.ok(stFiado.status === 200 || stFiado.status === 202, `stFiado: ${stFiado.status} ${JSON.stringify(stFiado.body)}`);
+  const fiadoId = String(stFiado.body.id);
+  let open = await request<Array<{ receiptId: string; balance: number; customerName: string }>>("/v1/receivables", {}, stockToken);
+  assert.equal(open.length, 1);
+  assert.equal(open[0].balance, 9);
+  assert.equal((await rawRequest(`/v1/receivables/${fiadoId}/payments`, { method: "POST", body: JSON.stringify({ amount: 20, method: "EFECTIVO" }) }, stockToken)).body.code, "EXCEEDS_BALANCE");
+  assert.equal((await rawRequest(`/v1/receivables/${fiadoId}/payments`, { method: "POST", body: JSON.stringify({ amount: 3, method: "CREDITO" }) }, stockToken)).status, 422);
+  const stPartial = await request<{ balance: number }>(`/v1/receivables/${fiadoId}/payments`, { method: "POST", body: JSON.stringify({ amount: 4, method: "EFECTIVO" }) }, stockToken);
+  assert.equal(stPartial.balance, 5);
+  const insights1 = await request<{ receivables: { total: number; customers: number }; lowStock: unknown[]; today: { total: number } }>("/v1/insights", {}, stockToken);
+  assert.equal(insights1.receivables.total, 5);
+  assert.equal(insights1.receivables.customers, 1);
+  assert.ok(insights1.today.total >= 18);
+  const stCashClose = await request<{ expectedCash: number; receivableCollections: Array<{ method: string; total: number }> }>("/v1/reports/daily-close", {}, stockToken);
+  assert.equal(stCashClose.receivableCollections.find((row) => row.method === "EFECTIVO")?.total, 4);
+  await request(`/v1/receivables/${fiadoId}/payments`, { method: "POST", body: JSON.stringify({ amount: 5, method: "YAPE" }) }, stockToken);
+  assert.equal((await request<unknown[]>("/v1/receivables", {}, stockToken)).length, 0, "Fully paid stSale leaves the list");
+  stProducts = await request("/v1/products", {}, stockToken);
+  assert.equal(stProducts.find((p) => p.clientProductId === "arroz-1kg")?.stockQty, 6, "Fiado stSale also decrements stock");
+  const lowInsights = await request<{ lowStock: Array<{ name: string }> }>("/v1/insights", {}, stockToken);
+  assert.equal(lowInsights.lowStock.length, 0);
+  await request("/v1/products/arroz-1kg/stock", { method: "POST", body: JSON.stringify({ mode: "SET", quantity: 2 }) }, stockToken);
+  assert.equal((await request<{ lowStock: Array<{ name: string }> }>("/v1/insights", {}, stockToken)).lowStock[0]?.name, "Arroz 1 kg");
+  const stKardex = await request<Array<{ reason: string }>>("/v1/products/arroz-1kg/movements", {}, stockToken);
+  assert.deepEqual(stKardex.map((m) => m.reason).reverse(), ["INICIAL", "VENTA", "VENTA", "AJUSTE"]);
+  // Anular una venta repone el stock (nota de crédito total).
+  await request("/v1/products/arroz-1kg/stock", { method: "POST", body: JSON.stringify({ mode: "SET", quantity: 10 }) }, stockToken);
+  const voidStock = await rawRequest(`/v1/receipts/${String(stCashSale.body.id)}/void`, { method: "POST", body: JSON.stringify({ reason: "Prueba de reposición" }) }, stockToken);
+  assert.ok(voidStock.status === 200 || voidStock.status === 202, `void: ${voidStock.status} ${JSON.stringify(voidStock.body)}`);
+  stProducts = await request("/v1/products", {}, stockToken);
+  assert.equal(stProducts.find((p) => p.clientProductId === "arroz-1kg")?.stockQty, 12, "Credit note restocks goods");
+
   log("PASS: register -> tenant -> RUC -> DNI cache -> sale -> idempotency -> offline resync -> PDF -> delivery -> validations -> billing security -> payments -> credit note -> daily close -> CSV -> Nubefact (NC parcial, ND, baja, guía) -> APIsPERU (ND, resumen de baja, guía) -> practice mode -> rate limit");
 }
 

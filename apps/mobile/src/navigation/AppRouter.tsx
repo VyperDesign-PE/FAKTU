@@ -21,8 +21,11 @@ import {
   CatalogScreen, ReceiptHistoryScreen, ReceiptDetailScreen, SystemStatusScreen, BusinessScreen, SupportScreen
 } from "../screens/management/ManagementScreens";
 import {
-  DashboardScreen, POSVentaScreen, HistorialComprobantesScreen, ConfiguracionScreen
+  DashboardScreen, HistorialComprobantesScreen, ConfiguracionScreen
 } from "../screens/main/MainSectionScreens";
+import { PosScreen } from "../screens/pos/PosScreen";
+import { ProductFormScreen, ProductosScreen } from "../screens/products/ProductScreens";
+import { PorCobrarScreen } from "../screens/receivables/ReceivableScreens";
 import { CashCloseScreen } from "../screens/reports/ReportsScreens";
 import { GuideDetailScreen, GuideFormScreen, GuidesScreen } from "../screens/guides/GuideScreens";
 
@@ -60,7 +63,10 @@ export function AppRouter() {
         <Stack.Screen name="Ready" component={ReadyScreen} />
 
         <Stack.Screen name="Dashboard" component={DashboardScreen} />
-        <Stack.Screen name="POSVenta" component={POSVentaScreen} />
+        <Stack.Screen name="POSVenta" component={PosScreen} />
+        <Stack.Screen name="Productos" component={ProductosScreen} />
+        <Stack.Screen name="ProductForm" component={ProductFormScreen} />
+        <Stack.Screen name="PorCobrar" component={PorCobrarScreen} />
         <Stack.Screen name="HistorialComprobantes" component={HistorialComprobantesScreen} />
         <Stack.Screen name="Configuracion" component={ConfiguracionScreen} />
 

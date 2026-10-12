@@ -12,7 +12,7 @@ import { showAlert } from "../../components/platform";
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
 export function WelcomeScreen({ navigation }: P<"Welcome">) {
-  return <Screen title="¡Bienvenido!" subtitle="Emite tus boletas y facturas desde tu celular.">
+  return <Screen narrow title="¡Bienvenido!" subtitle="Emite tus boletas y facturas desde tu celular.">
     <View style={styles.hero}><Text style={styles.heroIcon}>▣</Text><Text style={styles.heroTitle}>FAKTU</Text></View>
     <Card><Text style={styles.bullet}>✓ Fácil de usar</Text><Text style={styles.bullet}>✓ Pensado para pequeños negocios</Text><Text style={styles.bullet}>✓ Envía por WhatsApp, enlace o PDF</Text><Text style={styles.bullet}>✓ Puedes seguir vendiendo sin Internet</Text></Card>
     <PrimaryButton label="EMPEZAR" onPress={() => navigation.navigate("VerifyPhone")} />
@@ -36,7 +36,7 @@ export function VerifyPhoneScreen({ navigation }: P<"VerifyPhone">) {
     catch (e) { showAlert("No pudimos enviar el código", e instanceof Error ? e.message : "Intenta nuevamente."); }
     finally { setBusy(false); }
   }
-  return <Screen title="Tu celular" subtitle="Lo usaremos para avisarte cuando tu facturación esté activa y darte soporte por WhatsApp.">
+  return <Screen narrow title="Tu celular" subtitle="Lo usaremos para avisarte cuando tu facturación esté activa y darte soporte por WhatsApp.">
     <TextField label="Celular" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="999 999 999" />
     <Card tone="success"><Text style={styles.safe}>Tus datos están protegidos y no se comparten.</Text></Card>
     <PrimaryButton label={busy ? "ENVIANDO..." : "CONTINUAR"} onPress={next} disabled={busy} />
@@ -54,7 +54,7 @@ export function OtpCodeScreen({ navigation, route }: P<"OtpCode">) {
     catch (e) { showAlert("Código incorrecto", e instanceof Error ? e.message : "Revisa el código."); }
     finally { setBusy(false); }
   }
-  return <Screen title="Ingresa el código" subtitle={`Enviamos un código al ${phone}.`}>
+  return <Screen narrow title="Ingresa el código" subtitle={`Enviamos un código al ${phone}.`}>
     <TextField label="Código de verificación" value={code} onChangeText={setCode} keyboardType="number-pad" placeholder="123456" />
     <Card tone="info"><Text style={styles.note}>En el entorno de desarrollo el código es 123456.</Text></Card>
     <PrimaryButton label={busy ? "VERIFICANDO..." : "VERIFICAR"} onPress={next} disabled={busy || code.length !== 6} />
@@ -64,7 +64,7 @@ export function OtpCodeScreen({ navigation, route }: P<"OtpCode">) {
 export function EnterRucScreen({ navigation }: P<"EnterRuc">) {
   const { profile } = useApp();
   const [ruc, setRuc] = useState(profile.ruc ?? "");
-  return <Screen title="Ingresa el RUC de tu negocio" subtitle="Buscaremos la información de tu negocio.">
+  return <Screen narrow title="Ingresa el RUC de tu negocio" subtitle="Buscaremos la información de tu negocio.">
     <TextField label="RUC" value={ruc} onChangeText={setRuc} keyboardType="number-pad" placeholder="10XXXXXXXXX" />
     <PrimaryButton label="BUSCAR" onPress={() => ruc.length === 11 ? navigation.navigate("ConfirmBusiness", { ruc }) : showAlert("RUC inválido", "El RUC debe tener 11 dígitos.")} />
   </Screen>;
@@ -103,7 +103,7 @@ export function ConfirmBusinessScreen({ navigation, route }: P<"ConfirmBusiness"
     navigation.navigate("SunatConnectionData");
   }
 
-  return <Screen title={business ? "Encontramos tu negocio" : "Datos de tu negocio"} subtitle={business ? "Confirma que esta información corresponde a tu negocio." : "Si la consulta real aún no está conectada, puedes continuar manualmente."}>
+  return <Screen narrow title={business ? "Encontramos tu negocio" : "Datos de tu negocio"} subtitle={business ? "Confirma que esta información corresponde a tu negocio." : "Si la consulta real aún no está conectada, puedes continuar manualmente."}>
     {!business && !error ? <ActivityIndicator size="large" color={theme.colors.primary} /> : null}
     {error ? <Card tone={business?.simulated ? "warning" : "info"}><Text style={styles.note}>{error}</Text></Card> : null}
     {business ? <Card tone={business.simulated ? "warning" : "success"}><Text style={styles.business}>{business.tradeName ?? business.businessName}</Text><InfoRow label="RUC" value={business.ruc} /><InfoRow label="Razón social" value={business.businessName} /><InfoRow label="Estado" value={business.status || "-"} /><InfoRow label="Dirección" value={business.address || "-"} />{business.simulated ? <Text style={styles.note}>DATOS SIMULADOS · no usar como información tributaria real.</Text> : business.source === "SUNAT_RUC_PADRON" ? <Text style={styles.note}>Fuente: Padrón Reducido oficial de SUNAT{business.sourceUpdatedAt ? ` · actualizado ${business.sourceUpdatedAt}` : ""}.</Text> : null}</Card> : null}
@@ -127,7 +127,7 @@ export function ConfirmBusinessScreen({ navigation, route }: P<"ConfirmBusiness"
  * Mientras tanto se puede practicar en modo pruebas, sin validez tributaria.
  */
 export function SunatConnectionDataScreen({ navigation }: P<"SunatConnectionData">) {
-  return <Screen title="Facturación electrónica" subtitle="Así activamos tus comprobantes ante SUNAT. Te acompañamos en cada paso.">
+  return <Screen narrow title="Facturación electrónica" subtitle="Así activamos tus comprobantes ante SUNAT. Te acompañamos en cada paso.">
     <Card tone="info">
       <Text style={styles.bullet}>1. Tu certificado digital: si no lo tienes, te ayudamos a obtenerlo.</Text>
       <Text style={styles.bullet}>2. En SUNAT Operaciones en Línea creas un usuario secundario solo para facturar. Te guiamos por WhatsApp.</Text>
@@ -142,18 +142,18 @@ export function SunatConnectionDataScreen({ navigation }: P<"SunatConnectionData
 /** Ruta conservada por compatibilidad: redirige al paso de activación. */
 export function AuthorizePseScreen({ navigation }: P<"AuthorizePse">) {
   useEffect(() => { navigation.replace("SunatConnectionData"); }, [navigation]);
-  return <Screen title="Facturación electrónica"><ActivityIndicator color={theme.colors.primary} /></Screen>;
+  return <Screen narrow title="Facturación electrónica"><ActivityIndicator color={theme.colors.primary} /></Screen>;
 }
 
 export function AuthorizingScreen({ navigation }: P<"Authorizing">) {
   useEffect(() => { const timer = setTimeout(() => navigation.replace("EnabledDocuments"), 1200); return () => clearTimeout(timer); }, [navigation]);
-  return <Screen title="Autorizando..." subtitle="Estamos verificando la conexión de tu negocio.">
+  return <Screen narrow title="Autorizando..." subtitle="Estamos verificando la conexión de tu negocio.">
     <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.primary} /><Text style={styles.centerText}>Conectando con SUNAT/PSE</Text><Text style={styles.centerText}>Verificando autorización</Text><Text style={styles.centerText}>Finalizando configuración</Text></View>
   </Screen>;
 }
 
 export function EnabledDocumentsScreen({ navigation }: P<"EnabledDocuments">) {
-  return <Screen title="Comprobantes habilitados" subtitle="Según la configuración del negocio, podrás emitir:">
+  return <Screen narrow title="Comprobantes habilitados" subtitle="Según la configuración del negocio, podrás emitir:">
     <Card tone="success"><Text style={styles.doc}>✓ BOLETA ELECTRÓNICA</Text><Text>Para ventas al público.</Text></Card>
     <Card tone="info"><Text style={styles.doc}>✓ FACTURA ELECTRÓNICA</Text><Text>Para operaciones con RUC.</Text></Card>
     <Card><Text style={styles.note}>Estas opciones deberán actualizarse automáticamente si cambia la situación tributaria del negocio.</Text></Card>
@@ -173,7 +173,7 @@ export function ReadyScreen({ navigation }: P<"Ready">) {
   const [billing, setBilling] = useState<BillingSettings>();
   useEffect(() => { getBillingSettings().then(setBilling).catch(() => undefined); }, []);
   async function finish() { await completeOnboarding(); navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] }); }
-  return <Screen title="¡Todo listo!" subtitle="Tu negocio ya está configurado para comenzar.">
+  return <Screen narrow title="¡Todo listo!" subtitle="Tu negocio ya está configurado para comenzar.">
     <View style={styles.ready}><Text style={styles.check}>✓</Text></View>
     <Card tone="success"><InfoRow label="Negocio" value={profile.tradeName ?? profile.businessName ?? "Mi negocio"} /><InfoRow label="RUC" value={profile.ruc ?? "-"} /><InfoRow label="Comprobantes" value="Boleta y Factura" /><InfoRow label="Facturación" value={connectionLabel(billing)} /></Card>
     <PrimaryButton label="HACER MI PRIMERA VENTA" onPress={finish} tone="success" />

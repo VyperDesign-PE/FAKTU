@@ -15,6 +15,7 @@ import {
   type RemoteReceipt,
   updateRemoteBusiness,
   upsertRemoteProduct,
+  deleteRemoteProduct,
   saveRemoteCustomer
 } from "../services/api";
 
@@ -33,6 +34,8 @@ type AppContextValue = {
   setProfilePatch: (patch: Partial<BusinessProfile>, options?: { strict?: boolean }) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   addProductToCatalog: (product: Product) => Promise<void>;
+  removeProductFromCatalog: (id: string) => Promise<void>;
+  refreshCatalog: () => Promise<void>;
   addItem: (product: Product) => void;
   setItemQuantity: (id: string, quantity: number) => void;
   removeItem: (id: string) => void;
@@ -40,7 +43,7 @@ type AppContextValue = {
   setCustomer: (customer?: Customer) => void;
   setPayment: (paymentMethod: PaymentMethod, amountReceived?: number) => void;
   resetDraft: () => void;
-  createReceipt: () => Promise<PendingReceipt>;
+  createReceipt: (override?: Partial<SaleDraft>) => Promise<PendingReceipt>;
   refreshQueue: () => Promise<void>;
   refreshHistory: () => Promise<void>;
   syncNow: () => Promise<{ accepted: number; errors: number }>;
@@ -87,17 +90,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  const refreshCatalog = useCallback(async () => {
+    if (!user) return;
+    try {
+      const remote = await listRemoteProducts();
+      setCatalog(remote);
+      await saveCatalog(scope, remote);
+    } catch {
+      // Sin conexión: se conserva el catálogo local.
+    }
+  }, [scope, user]);
+
   const syncNow = useCallback(async () => {
     if (!user) return { accepted: 0, errors: 0 };
     await syncPendingReceipts(scope);
     const next = await getQueue(scope);
     setQueue(next);
     await refreshHistory();
+    // El stock lo mueve el servidor al emitir: se refresca para mostrar saldos reales.
+    await refreshCatalog();
     return {
       accepted: next.filter((r) => r.status === "ACCEPTED").length,
       errors: next.filter((r) => r.status === "ERROR" || r.status === "REJECTED").length
     };
-  }, [refreshHistory, scope, user]);
+  }, [refreshCatalog, refreshHistory, scope, user]);
 
   useEffect(() => {
     if (!authHydrated) return;
@@ -191,6 +207,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function removeProductFromCatalog(id: string) {
+    const next = catalog.filter((item) => item.id !== id);
+    setCatalog(next);
+    await saveCatalog(scope, next);
+    if (online && user) await deleteRemoteProduct(id);
+  }
+
   function addItem(product: Product) {
     setDraft((current) => {
       const found = current.items.find((item) => item.id === product.id);
@@ -230,25 +253,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLastReceipt(undefined);
   }
 
-  async function createReceipt() {
+  async function createReceipt(override: Partial<SaleDraft> = {}) {
+    const sale: SaleDraft = { ...draft, ...override };
     if (!user) throw new Error("Debes iniciar sesión para emitir comprobantes.");
     // Mismo redondeo que el servidor: cada línea se redondea a céntimos y luego se suma.
-    const totalCents = draft.items.reduce((sum, item) => sum + Math.round((item.quantity * item.unitPrice + Number.EPSILON) * 100), 0);
+    const totalCents = sale.items.reduce((sum, item) => sum + Math.round((item.quantity * item.unitPrice + Number.EPSILON) * 100), 0);
     const total = totalCents / 100;
     const receipt: PendingReceipt = {
       clientTransactionId: `client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       temporaryNumber: `VT-${Date.now().toString().slice(-6)}`,
       createdAt: new Date().toISOString(),
-      documentType: draft.documentType,
-      items: draft.items,
-      customer: draft.customer,
+      documentType: sale.documentType,
+      items: sale.items,
+      customer: sale.customer,
       total,
-      paymentMethod: draft.paymentMethod,
-      amountReceived: draft.paymentMethod === "EFECTIVO" ? draft.amountReceived : undefined,
+      paymentMethod: sale.paymentMethod,
+      amountReceived: sale.paymentMethod === "EFECTIVO" ? sale.amountReceived : undefined,
       status: "PENDING"
     };
     await enqueueReceipt(scope, receipt);
     setLastReceipt(receipt);
+    // La venta ya está en la cola: el carrito queda limpio para la siguiente.
+    setDraft(initialDraft);
     await refreshQueue();
     if (online) await syncNow();
     return receipt;
@@ -258,7 +284,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextValue>(() => ({
     hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt,
-    setProfilePatch, completeOnboarding, addProductToCatalog, addItem, setItemQuantity,
+    setProfilePatch, completeOnboarding, addProductToCatalog, removeProductFromCatalog, refreshCatalog, addItem, setItemQuantity,
     removeItem, setDocumentType, setCustomer, setPayment, resetDraft, createReceipt, refreshQueue, refreshHistory, syncNow
   }), [hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt, refreshQueue, refreshHistory, syncNow]);
 

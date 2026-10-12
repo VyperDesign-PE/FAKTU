@@ -19,7 +19,7 @@ export function HomeScreen({ navigation }: Props) {
 
   function startSale() {
     resetDraft();
-    navigation.navigate(online ? "NewSale" : "OfflineSale");
+    navigation.navigate("POSVenta");
   }
 
   return (

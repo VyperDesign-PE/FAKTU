@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
@@ -27,30 +27,93 @@ const DOC_LABEL: Record<string, string> = { BOLETA: "Boleta", FACTURA: "Factura"
  * Lista de comprobantes: primero las ventas del dispositivo que aún no llegan
  * al servidor, luego el historial guardado del negocio.
  */
+type Row = {
+  key: string;
+  clientTransactionId: string;
+  doc: string;
+  number: string;
+  customer: string;
+  method: string;
+  date: string;
+  amount: string;
+  negative: boolean;
+  state: string;
+  tone: "ok" | "warn" | "bad" | "muted";
+  kind: "ALL" | "REVIEW" | "CREDIT" | "VOIDED";
+};
+
+const FILTERS: Array<{ value: Row["kind"] | "ALL"; label: string }> = [
+  { value: "ALL", label: "Todos" },
+  { value: "REVIEW", label: "Por revisar" },
+  { value: "CREDIT", label: "Fiados" },
+  { value: "VOIDED", label: "Anulados" }
+];
+
 export function ReceiptList({ onOpen }: { onOpen: (clientTransactionId: string) => void }) {
   const { queue, history } = useApp();
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"ALL" | "REVIEW" | "CREDIT" | "VOIDED">("ALL");
   const remoteIds = new Set(history.map((item) => item.clientTransactionId));
   const localOnly = queue.filter((item) => !remoteIds.has(item.clientTransactionId)).slice().reverse();
 
-  return <>
-    {!history.length && !localOnly.length ? <Card><Text style={styles.center}>Todavía no hay comprobantes.</Text></Card> : null}
+  const rows: Row[] = [
+    ...localOnly.map((r): Row => ({
+      key: r.clientTransactionId, clientTransactionId: r.clientTransactionId, doc: DOC_LABEL[r.documentType] ?? r.documentType,
+      number: r.officialNumber ?? r.temporaryNumber, customer: r.customer?.name ?? "Público general",
+      method: PAYMENT_METHODS.find((m) => m.value === r.paymentMethod)?.label ?? "", date: new Date(r.createdAt).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }),
+      amount: `S/ ${r.total.toFixed(2)}`, negative: false, state: friendlyStatus(r.status),
+      tone: r.status === "ERROR" || r.status === "REJECTED" ? "bad" : r.status === "ACCEPTED" ? "ok" : "warn",
+      kind: r.status === "ERROR" || r.status === "REJECTED" ? "REVIEW" : r.paymentMethod === "CREDITO" ? "CREDIT" : "ALL"
+    })),
+    ...history.map((r): Row => ({
+      key: r.id, clientTransactionId: r.clientTransactionId, doc: DOC_LABEL[r.documentType] ?? r.documentType,
+      number: r.officialNumber ?? r.temporaryNumber, customer: r.customer?.name ?? "Público general",
+      method: PAYMENT_METHODS.find((m) => m.value === r.paymentMethod)?.label ?? "", date: new Date(r.issueDate).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }),
+      amount: `${r.documentType === "NOTA_CREDITO" ? "−" : ""}S/ ${r.total.toFixed(2)}`, negative: r.documentType === "NOTA_CREDITO",
+      state: r.voided ? "Anulado" : friendlyRemoteStatus(r.status),
+      tone: r.voided ? "muted" : r.status === "ACCEPTED" ? "ok" : r.status === "ERROR" || r.status === "REJECTED" ? "bad" : "warn",
+      kind: r.voided ? "VOIDED" : r.status === "ERROR" || r.status === "REJECTED" ? "REVIEW" : r.paymentMethod === "CREDITO" ? "CREDIT" : "ALL"
+    }))
+  ];
+  const term = search.trim().toLowerCase();
+  const visible = rows.filter((row) => (filter === "ALL" || row.kind === filter) && (!term || `${row.number} ${row.customer} ${row.doc}`.toLowerCase().includes(term)));
 
-    {localOnly.map((r) => <Pressable key={r.clientTransactionId} onPress={() => onOpen(r.clientTransactionId)}>
-      <Card tone={r.status === "ERROR" || r.status === "REJECTED" ? "danger" : r.status === "ACCEPTED" ? "success" : "warning"}>
-        <InfoRow label={DOC_LABEL[r.documentType] ?? r.documentType} value={r.officialNumber ?? r.temporaryNumber} />
-        <InfoRow label="Total" value={`S/ ${r.total.toFixed(2)}`} />
-        <InfoRow label="Estado" value={friendlyStatus(r.status)} />
-      </Card>
-    </Pressable>)}
+  return <View style={{ gap: 12 }}>
+    <View style={styles.listToolbar}>
+      <TextInput value={search} onChangeText={setSearch} placeholder="Buscar por número o cliente…" placeholderTextColor="#9AA1B1" style={styles.listSearch} accessibilityLabel="Buscar comprobante" />
+      <View style={styles.filterRow}>{FILTERS.map((f) => <Chip key={f.value} label={f.label} active={filter === f.value} onPress={() => setFilter(f.value)} />)}</View>
+    </View>
+    {!rows.length ? <Card><Text style={styles.center}>Todavía no hay comprobantes. Tu primera venta aparecerá aquí.</Text></Card> : null}
+    {rows.length && !visible.length ? <Card><Text style={styles.center}>No hay comprobantes con ese filtro.</Text></Card> : null}
+    {visible.length ? <View style={styles.table}>
+      {wide ? <View style={[styles.tr, styles.th]}>
+        <Text style={[styles.thText, { flex: 1.3 }]}>Comprobante</Text><Text style={[styles.thText, { flex: 1.6 }]}>Cliente</Text><Text style={[styles.thText, { flex: 0.9 }]}>Pago</Text><Text style={[styles.thText, { flex: 1.1 }]}>Fecha</Text><Text style={[styles.thText, { flex: 0.9, textAlign: "right" }]}>Total</Text><Text style={[styles.thText, { flex: 1, textAlign: "right" }]}>Estado</Text>
+      </View> : null}
+      {visible.map((row) => <Pressable key={row.key} accessibilityRole="button" onPress={() => onOpen(row.clientTransactionId)} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.tr, hovered && { backgroundColor: "#FBF9FF" }]}>
+        {wide ? <>
+          <View style={{ flex: 1.3 }}><Text style={styles.tdStrong}>{row.number}</Text><Text style={styles.tdMuted}>{row.doc}</Text></View>
+          <Text style={[styles.td, { flex: 1.6 }]} numberOfLines={1}>{row.customer}</Text>
+          <Text style={[styles.td, { flex: 0.9 }]}>{row.method}</Text>
+          <Text style={[styles.td, { flex: 1.1 }]}>{row.date}</Text>
+          <Text style={[styles.tdStrong, { flex: 0.9, textAlign: "right" }]}>{row.amount}</Text>
+          <View style={{ flex: 1, alignItems: "flex-end" }}><StatePill tone={row.tone} text={row.state} /></View>
+        </> : <>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tdStrong}>{row.number} <Text style={styles.tdMuted}>· {row.doc}</Text></Text>
+            <Text style={styles.tdMuted} numberOfLines={1}>{row.customer}{row.method ? ` · ${row.method}` : ""} · {row.date}</Text>
+          </View>
+          <View style={{ alignItems: "flex-end", gap: 4 }}><Text style={styles.tdStrong}>{row.amount}</Text><StatePill tone={row.tone} text={row.state} /></View>
+        </>}
+      </Pressable>)}
+    </View> : null}
+  </View>;
+}
 
-    {history.map((r) => <Pressable key={r.id} onPress={() => onOpen(r.clientTransactionId)}>
-      <Card tone={r.voided ? "default" : r.status === "ACCEPTED" ? "success" : r.status === "ERROR" || r.status === "REJECTED" ? "danger" : "warning"}>
-        <InfoRow label={DOC_LABEL[r.documentType] ?? r.documentType} value={r.officialNumber ?? r.temporaryNumber} />
-        <InfoRow label={new Date(r.issueDate).toLocaleString()} value={`${r.documentType === "NOTA_CREDITO" ? "−" : ""}S/ ${r.total.toFixed(2)}`} />
-        <InfoRow label="Estado" value={r.voided ? "Anulado" : friendlyRemoteStatus(r.status)} />
-      </Card>
-    </Pressable>)}
-  </>;
+function StatePill({ tone, text }: { tone: Row["tone"]; text: string }) {
+  const palette = { ok: [theme.colors.successSoft, theme.colors.success], warn: [theme.colors.warningSoft, theme.colors.warning], bad: [theme.colors.dangerSoft, theme.colors.danger], muted: ["#EEF0F5", theme.colors.muted] }[tone];
+  return <View style={{ backgroundColor: palette[0], paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 }}><Text style={{ color: palette[1], fontWeight: "800", fontSize: 11.5 }}>{text}</Text></View>;
 }
 
 export function ReceiptHistoryScreen({ navigation }: P<"ReceiptHistory">) {
@@ -290,6 +353,16 @@ function friendlyStatus(status: "PENDING" | "SYNCING" | "ACCEPTED" | "REJECTED" 
 function friendlyRemoteStatus(status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR") { return { ACCEPTED: "Aceptado", PENDING: "Pendiente", REJECTED: "Rechazado", ERROR: "Revisar" }[status]; }
 
 const styles = StyleSheet.create({
+  listToolbar: { gap: 10 },
+  listSearch: { minHeight: 46, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  table: { backgroundColor: theme.colors.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
+  tr: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+  th: { minHeight: 42, backgroundColor: "#F8F9FC" },
+  thText: { color: theme.colors.muted, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 },
+  td: { color: theme.colors.text },
+  tdStrong: { color: theme.colors.text, fontWeight: "800" },
+  tdMuted: { color: theme.colors.muted, fontSize: 12.5, fontWeight: "500" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "900", color: theme.colors.text }, price: { fontWeight: "900", color: theme.colors.primary, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
   statusTitle: { color: theme.colors.text, fontSize: 19, fontWeight: "900", textAlign: "center" }, body: { color: theme.colors.muted, lineHeight: 20 }, error: { color: theme.colors.danger, fontWeight: "700" }, supportTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 }, chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
 });

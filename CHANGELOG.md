@@ -1,3 +1,22 @@
+# 0.17.0 - Venta en un paso, stock, fiados y marca FAKTU
+
+**Diferenciadores para el pequeño comercio peruano**
+- **Vender en un paso**: un solo punto de venta (productos + ticket) con cliente, Boleta/Factura, medio de pago y vuelto en la misma pantalla. Antes eran 7 pantallas. En PC el ticket queda a la derecha; en celular, barra "Ver ticket".
+- **Fiados / Por cobrar**: se emite la boleta y la deuda queda registrada por cliente, con abonos (efectivo, Yape, Plin...), cobro de la deuda más antigua primero y recordatorio por WhatsApp con el saldo. Solo con boleta e identificando al cliente (las facturas al crédito requieren cuotas SUNAT). El abono en efectivo entra al efectivo esperado del cierre de caja.
+- **Stock opcional con kardex**: cada venta descuenta, cada anulación/devolución repone (motivos 01, 02, 06 y 07); ajustes de conteo e ingresos de mercadería; alerta de stock bajo. Nunca bloquea una venta por falta de stock.
+- **Mi negocio**: ventas de hoy vs ayer, gráfico de 7 días, lo que más vendes, hora más fuerte, por cobrar, stock bajo y resumen del día para compartir por WhatsApp.
+
+**UX/UI y marca**
+- Identidad FAKTU (isotipo, menú lateral oscuro, barra superior en celular, botón central "Vender").
+- PC / all-in-one: menú lateral, tablas con búsqueda y filtros (Todos, Por revisar, Fiados, Anulados), columnas de contenido centradas. Celular: barra inferior con 5 pestañas.
+- Se retiraron los productos de ejemplo que se sembraban en cuentas nuevas.
+
+**Técnico**
+- Migración 009: `stock_qty`, `min_stock`, `stock_movements`, `receivable_payments`, medio de pago `CREDITO`.
+- Endpoints: `/v1/insights`, `/v1/receivables`, `/v1/receivables/:id/payments`, `/v1/products/:id/stock`, `/v1/products/:id/movements`, `DELETE /v1/products/:id`.
+- El proveedor de facturación no recibe "medio de pago" ni "cancelado" en ventas fiadas.
+- E2E ampliado (stock, fiado, abonos, cierre de caja, reposición por anulación).
+
 # 0.16.0 - Todos los documentos: notas, bajas y guías de remisión
 
 **Notas de crédito por motivo (catálogo SUNAT 09)**

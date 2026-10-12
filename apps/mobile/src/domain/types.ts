@@ -9,14 +9,18 @@ export function isFinalReceiptStatus(status: ReceiptStatus) {
   return status === "ACCEPTED" || status === "REJECTED";
 }
 export type CustomerDocumentType = "DNI" | "RUC";
-export type PaymentMethod = "EFECTIVO" | "YAPE" | "PLIN" | "TARJETA" | "TRANSFERENCIA";
+export type PaymentMethod = "EFECTIVO" | "YAPE" | "PLIN" | "TARJETA" | "TRANSFERENCIA" | "CREDITO";
 export const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "EFECTIVO", label: "Efectivo" },
   { value: "YAPE", label: "Yape" },
   { value: "PLIN", label: "Plin" },
   { value: "TARJETA", label: "Tarjeta" },
-  { value: "TRANSFERENCIA", label: "Transferencia" }
+  { value: "TRANSFERENCIA", label: "Transferencia" },
+  { value: "CREDITO", label: "Fiado" }
 ];
+
+/** Medios con los que un cliente puede pagar (todos menos el fiado). */
+export const SETTLEMENT_METHODS = PAYMENT_METHODS.filter((method) => method.value !== "CREDITO");
 
 export type Product = {
   id: string;
@@ -24,6 +28,9 @@ export type Product = {
   unitPrice: number;
   unit?: string;
   favorite?: boolean;
+  /** undefined/null = sin control de stock. */
+  stockQty?: number | null;
+  minStock?: number;
 };
 
 export type SaleItem = Product & {

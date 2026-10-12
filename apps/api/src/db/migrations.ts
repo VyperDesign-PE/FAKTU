@@ -8,6 +8,7 @@ const SUNAT_RUC_REGISTRY_MIGRATION_ID = "20260828_005_sunat_ruc_registry";
 const APISPERU_SANDBOX_MIGRATION_ID = "20260828_006_apisperu_sandbox";
 const PILOT_FEATURES_MIGRATION_ID = "20261012_007_payments_credit_notes";
 const DOCUMENT_SUITE_MIGRATION_ID = "20261012_008_notes_voidings_despatch";
+const STOCK_RECEIVABLES_MIGRATION_ID = "20261013_009_stock_receivables";
 
 /**
  * Migración idempotente del MVP 1.0.
@@ -577,6 +578,56 @@ export async function runMigrations() {
       await tx`
         insert into schema_migrations (id)
         values (${DOCUMENT_SUITE_MIGRATION_ID})
+        on conflict do nothing
+      `;
+    });
+  }
+
+  const stockReceivablesApplied = await sql`
+    select id from schema_migrations where id = ${STOCK_RECEIVABLES_MIGRATION_ID} limit 1
+  `;
+  if (!stockReceivablesApplied.length) {
+    await sql.begin(async (tx) => {
+      // Inventario simple: stock_qty nulo = producto sin control de stock.
+      await tx`alter table products add column if not exists stock_qty numeric(14,3)`;
+      await tx`alter table products add column if not exists min_stock numeric(14,3) not null default 0`;
+      await tx`
+        create table if not exists stock_movements (
+          id uuid primary key,
+          tenant_id uuid not null references tenants(id) on delete cascade,
+          product_id uuid not null references products(id) on delete cascade,
+          delta numeric(14,3) not null,
+          balance numeric(14,3) not null,
+          reason varchar(20) not null check (reason in ('INICIAL', 'VENTA', 'DEVOLUCION', 'INGRESO', 'AJUSTE')),
+          note text,
+          receipt_id uuid references receipts(id) on delete set null,
+          created_at timestamptz not null default now()
+        )
+      `;
+      await tx`create index if not exists idx_stock_movements_product on stock_movements (tenant_id, product_id, created_at desc)`;
+
+      // Ventas fiadas: el comprobante se emite normal y el cobro queda pendiente.
+      await tx`alter table receipts drop constraint if exists receipts_payment_method_check`;
+      await tx`
+        alter table receipts add constraint receipts_payment_method_check
+        check (payment_method in ('EFECTIVO', 'YAPE', 'PLIN', 'TARJETA', 'TRANSFERENCIA', 'CREDITO'))
+      `;
+      await tx`
+        create table if not exists receivable_payments (
+          id uuid primary key,
+          tenant_id uuid not null references tenants(id) on delete cascade,
+          receipt_id uuid not null references receipts(id) on delete restrict,
+          amount numeric(14,2) not null check (amount > 0),
+          method varchar(20) not null,
+          note text,
+          created_at timestamptz not null default now()
+        )
+      `;
+      await tx`create index if not exists idx_receivable_payments_receipt on receivable_payments (tenant_id, receipt_id)`;
+
+      await tx`
+        insert into schema_migrations (id)
+        values (${STOCK_RECEIVABLES_MIGRATION_ID})
         on conflict do nothing
       `;
     });

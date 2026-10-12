@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Screen } from "../../components/Screen";
+import { BrandLogo } from "../../components/Brand";
 import { Card, PrimaryButton, TextField } from "../../components/Ui";
 import { useAuth } from "../../context/AuthContext";
 import { hasErrors, normalizeEmail, validateLogin, validateRegistration } from "../../auth/validation";
@@ -14,7 +15,7 @@ type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStack
 function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <View style={styles.header}>
-      <View style={styles.logo}><Text style={styles.logoText}>F</Text></View>
+      <BrandLogo size={52} />
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
     </View>
@@ -45,7 +46,7 @@ export function LoginScreen({ navigation }: P<"Login">) {
   }
 
   return (
-    <Screen>
+    <Screen narrow>
       <AuthHeader title="Bienvenido nuevamente" subtitle="Ingresa para continuar con tu negocio." />
       <Card>
         <TextField
@@ -113,7 +114,7 @@ export function RegisterScreen({ navigation }: P<"Register">) {
   }
 
   return (
-    <Screen>
+    <Screen narrow>
       <AuthHeader title="Crea tu cuenta" subtitle="Primero creamos tu acceso. Luego configuramos el negocio." />
       <Card>
         <TextField
