@@ -1,0 +1,63 @@
+# FAKTU en un VPS (Hetzner, DigitalOcean, Contabo, Oracle Free...): app + API + PostgreSQL + HTTPS automático.
+# Guía paso a paso: docs/DEPLOY.md
+#
+#   cp infra/.env.prod.example infra/.env.prod   # y completa los valores
+#   docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: faktu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD}
+      POSTGRES_DB: faktu
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U faktu -d faktu"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  faktu:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      DATABASE_URL: postgres://faktu:${POSTGRES_PASSWORD}@postgres:5432/faktu
+      DB_AUTO_MIGRATE: "true"
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET}
+      PUBLIC_RECEIPT_LINK_SECRET: ${PUBLIC_RECEIPT_LINK_SECRET:?define PUBLIC_RECEIPT_LINK_SECRET}
+      PUBLIC_APP_BASE_URL: https://${DOMAIN:?define DOMAIN}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-mock}
+      ALLOW_MOCK_BILLING: ${ALLOW_MOCK_BILLING:-true}
+      DELIVERY_PROVIDER: mock
+      DEMO_AUTOSEED: ${DEMO_AUTOSEED:-false}
+    env_file:
+      # Credenciales por negocio (BILLING_TOKEN_...) y proveedores: ver docs/PILOTO.md
+      - path: .env.providers
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - faktu
+
+volumes:
+  pgdata:
+  caddy_data:

@@ -16,6 +16,7 @@
 - `npm run demo:up` / `demo:seed` / `demo:down` y `docs/DEMO.md` (dónde correrlo y guion).
 - Corrección: un dispositivo nuevo ya no "des-completa" el alta del negocio en el servidor.
 
+- Kit de despliegue en VPS (`infra/docker-compose.prod.yml`, Caddy con HTTPS, `scripts/backup-db.sh`, `docs/DEPLOY.md`): ≈ US$ 5/mes.
 - Despliegue en línea con `render.yaml` (Blueprint) y carga automática de la demo (`DEMO_AUTOSEED`). La API acepta `PORT` y usa `RENDER_EXTERNAL_URL` para los enlaces públicos.
 
 **Técnico**
