@@ -1,0 +1,6 @@
+.git
+node_modules
+apps/mobile/node_modules
+apps/api/node_modules
+*.zip
+*.html

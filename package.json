@@ -1,0 +1,21 @@
+{
+  "name": "aplicativo-facturacion-mvp",
+  "private": true,
+  "version": "0.12.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @app/api run dev",
+    "dev:mobile": "npm --workspace @app/mobile run start",
+    "migrate": "npm --workspace @app/api run migrate",
+    "typecheck": "npm --workspace @app/api run typecheck && npm --workspace @app/mobile run typecheck",
+    "sync:sunat-ruc": "npm --workspace @app/api run sync:sunat-ruc",
+    "test:sunat-ruc-parser": "npm --workspace @app/api run test:sunat-ruc-parser",
+    "e2e:up": "docker compose -f infra/docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e",
+    "e2e:down": "docker compose -f infra/docker-compose.e2e.yml down -v",
+    "test:apisperu-adapter": "npm --workspace @app/api run test:apisperu-adapter",
+    "test:apisperu-sandbox": "npm --workspace @app/api run test:apisperu-sandbox"
+  }
+}

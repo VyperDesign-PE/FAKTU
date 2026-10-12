@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: facturacion_e2e
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d facturacion_e2e"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock-document-api:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./mock-document-api.mjs:/app/server.mjs:ro
+    environment:
+      PORT: 4100
+      MOCK_DOCUMENT_TOKEN: e2e-token
+    command: ["node", "/app/server.mjs"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      NODE_ENV: test
+      API_PORT: 4000
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/facturacion_e2e
+      DB_AUTO_MIGRATE: "true"
+      JWT_SECRET: e2e-jwt-secret-change-in-production
+      BILLING_PROVIDER: mock
+      DOCUMENT_LOOKUP_PROVIDER: external
+      DOCUMENT_LOOKUP_API_BASE_URL: http://mock-document-api:4100
+      DOCUMENT_LOOKUP_API_TOKEN: e2e-token
+      DOCUMENT_LOOKUP_TIMEOUT_MS: 3000
+      DOCUMENT_LOOKUP_DNI_COST_PEN: 0.03
+      PUBLIC_APP_BASE_URL: http://api:4000
+      PUBLIC_RECEIPT_LINK_SECRET: e2e-public-link-secret-change-in-production
+      DELIVERY_PROVIDER: mock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-document-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  e2e:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/facturacion_e2e
+      E2E_API_BASE_URL: http://api:4000
+      E2E_MOCK_DOCUMENT_BASE_URL: http://mock-document-api:4100
+      ALLOW_E2E_SEED: "true"
+    command: ["npm", "run", "test:e2e"]
+    depends_on:
+      api:
+        condition: service_healthy
+      mock-document-api:
+        condition: service_healthy
