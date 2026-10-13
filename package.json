@@ -19,7 +19,7 @@
     "test:apisperu-sandbox": "npm --workspace @app/api run test:apisperu-sandbox",
     "test:unit": "npm --workspace @app/api run test:unit",
     "test:integration": "npm --workspace @app/api run test:integration",
-    "test": "npm run test:unit && npm run test:apisperu && npm run test:nubefact && npm run test:apisperu-adapter && npm run test:sunat-ruc-parser",
+    "test": "npm run test:unit && npm run test:apisperu && npm run test:nubefact && npm run test:apisperu-adapter && npm run test:sunat-ruc-parser && npm run test:mobile",
     "test:nubefact": "npm --workspace @app/api run test:nubefact",
     "build:web": "npm --workspace @app/mobile run build:web",
     "dev:web": "npm --workspace @app/mobile run web",
@@ -29,6 +29,7 @@
     "demo:seed": "npm --workspace @app/api run demo:seed",
     "demo:up": "docker compose -f infra/docker-compose.demo.yml up --build -d",
     "demo:down": "docker compose -f infra/docker-compose.demo.yml down -v",
-    "test:apisperu": "npm --workspace @app/api run test:apisperu"
+    "test:apisperu": "npm --workspace @app/api run test:apisperu",
+    "test:mobile": "npm --workspace @app/mobile run test:domain"
   }
 }

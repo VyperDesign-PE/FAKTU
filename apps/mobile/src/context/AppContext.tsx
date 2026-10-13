@@ -6,6 +6,7 @@ import { enqueueReceipt, getQueue } from "../storage/receiptQueue";
 import { syncPendingReceipts } from "../services/sync";
 import { loadProfile, saveProfile } from "../storage/profile";
 import { loadCatalog, saveCatalog } from "../storage/catalog";
+import { quoteTotals } from "../domain/pricing";
 import { listCachedCustomers } from "../storage/customerCache";
 import { useAuth } from "./AuthContext";
 import {
@@ -256,9 +257,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function createReceipt(override: Partial<SaleDraft> = {}) {
     const sale: SaleDraft = { ...draft, ...override };
     if (!user) throw new Error("Debes iniciar sesión para emitir comprobantes.");
-    // Mismo redondeo que el servidor: cada línea se redondea a céntimos y luego se suma.
-    const totalCents = sale.items.reduce((sum, item) => sum + Math.round((item.quantity * item.unitPrice + Number.EPSILON) * 100), 0);
-    const total = totalCents / 100;
+    // Mismo redondeo que el servidor (ver domain/pricing.ts).
+    const { total } = quoteTotals(sale.items);
     const receipt: PendingReceipt = {
       clientTransactionId: `client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       temporaryNumber: `VT-${Date.now().toString().slice(-6)}`,

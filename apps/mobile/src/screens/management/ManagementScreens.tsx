@@ -7,6 +7,8 @@ import { Card, Chip, InfoRow, PrimaryButton, SectionTitle, TextField } from "../
 import { useApp } from "../../context/AppContext";
 import { useAuth } from "../../context/AuthContext";
 import { theme } from "../../theme";
+import { attentionCount } from "../../domain/receiptMetrics";
+import { localStatusInfo, remoteStatusInfo } from "../../domain/receiptStatus";
 import { PAYMENT_METHODS } from "../../domain/types";
 import { ReceiptActions } from "./ReceiptActions";
 import { getBillingSettings, getRemoteReceiptByTransaction, getRucRegistryStatus, listBillingProviders, testBillingConnection, updateBillingSettings, type BillingEnvironment, type BillingProviderCode, type BillingProviderOption, type BillingSettings, type RemoteReceipt, type RucRegistryStatus } from "../../services/api";
@@ -82,7 +84,7 @@ export function ReceiptList({ onOpen }: { onOpen: (clientTransactionId: string) 
 
   return <View style={{ gap: 12 }}>
     <View style={styles.listToolbar}>
-      <TextInput value={search} onChangeText={setSearch} placeholder="Buscar por número o cliente…" placeholderTextColor="#9AA1B1" style={styles.listSearch} accessibilityLabel="Buscar comprobante" />
+      <TextInput value={search} onChangeText={setSearch} placeholder="Buscar por número o cliente…" placeholderTextColor={theme.colors.muted} style={styles.listSearch} accessibilityLabel="Buscar comprobante" />
       <View style={styles.filterRow}>{FILTERS.map((f) => <Chip key={f.value} label={f.label} active={filter === f.value} onPress={() => setFilter(f.value)} />)}</View>
     </View>
     {!rows.length ? <Card><Text style={styles.center}>Todavía no hay comprobantes. Tu primera venta aparecerá aquí.</Text></Card> : null}
@@ -208,7 +210,7 @@ export function BillingSettingsScreen({ navigation }: P<"BillingSettings">) {
         setAccountRef(current.providerAccountRef ?? "");
         setProviders(catalog.providers);
       })
-      .catch((error) => setMessage(error instanceof Error ? error.message : "No pudimos cargar la configuracion."))
+      .catch((error) => setMessage(error instanceof Error ? error.message : "No pudimos cargar la configuración. Revisa tu conexión o tus permisos e inténtalo de nuevo."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -300,7 +302,7 @@ export function BillingSettingsScreen({ navigation }: P<"BillingSettings">) {
 export function SystemStatusScreen({ navigation }: P<"SystemStatus">) {
   const { online, pendingCount, queue } = useApp();
   const [rucRegistry, setRucRegistry] = useState<RucRegistryStatus>();
-  const errors = queue.filter((r) => r.status === "ERROR" || r.status === "REJECTED").length;
+  const errors = attentionCount(queue);
   const title = !online ? "Sin Internet" : errors ? "Hay algo que revisar" : pendingCount ? "Hay comprobantes pendientes" : "Todo funciona correctamente";
 
   useEffect(() => {
@@ -349,8 +351,8 @@ export function SupportScreen({ navigation }: P<"Support">) {
   </Screen>;
 }
 
-function friendlyStatus(status: "PENDING" | "SYNCING" | "ACCEPTED" | "REJECTED" | "ERROR") { return { PENDING: "Pendiente", SYNCING: "Enviando", ACCEPTED: "Aceptado", REJECTED: "Rechazado", ERROR: "Revisar" }[status]; }
-function friendlyRemoteStatus(status: "ACCEPTED" | "PENDING" | "REJECTED" | "ERROR") { return { ACCEPTED: "Aceptado", PENDING: "Pendiente", REJECTED: "Rechazado", ERROR: "Revisar" }[status]; }
+const friendlyStatus = (status: Parameters<typeof localStatusInfo>[0]) => localStatusInfo(status).label;
+const friendlyRemoteStatus = (status: Parameters<typeof remoteStatusInfo>[0]) => remoteStatusInfo(status).label;
 
 const styles = StyleSheet.create({
   listToolbar: { gap: 10 },
@@ -363,6 +365,6 @@ const styles = StyleSheet.create({
   td: { color: theme.colors.text },
   tdStrong: { color: theme.colors.text, fontWeight: "800" },
   tdMuted: { color: theme.colors.muted, fontSize: 12.5, fontWeight: "500" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: theme.colors.surface, borderRadius: 15, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "900", color: theme.colors.text }, price: { fontWeight: "900", color: theme.colors.primary, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: theme.colors.surface, borderRadius: 15, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "900", color: theme.colors.text }, price: { fontWeight: "900", color: theme.colors.primaryText, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
   statusTitle: { color: theme.colors.text, fontSize: 19, fontWeight: "900", textAlign: "center" }, body: { color: theme.colors.muted, lineHeight: 20 }, error: { color: theme.colors.danger, fontWeight: "700" }, supportTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 }, chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
 });

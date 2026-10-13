@@ -36,7 +36,7 @@ export function ProductosScreen({ navigation }: P<"Productos">) {
       action={<View style={{ width: 150 }}><PrimaryButton label="＋ NUEVO" onPress={() => navigation.navigate("ProductForm")} /></View>}
     >
       <View style={styles.toolbar}>
-        <TextInput value={search} onChangeText={setSearch} placeholder="Buscar producto…" placeholderTextColor="#9AA1B1" style={styles.search} accessibilityLabel="Buscar producto" />
+        <TextInput value={search} onChangeText={setSearch} placeholder="Buscar producto…" placeholderTextColor={theme.colors.muted} style={styles.search} accessibilityLabel="Buscar producto" />
         <Chip label={`Stock bajo (${low.length})`} active={onlyLow} onPress={() => setOnlyLow((v) => !v)} />
       </View>
       {!list.length ? <Card><Text style={styles.muted}>{catalog.length ? "No hay productos con ese filtro." : "Aún no tienes productos. Agrega el primero o vende con “＋ Otro” desde Vender."}</Text></Card> : null}
@@ -169,6 +169,6 @@ const styles = StyleSheet.create({
   pillDanger: { backgroundColor: theme.colors.dangerSoft },
   pillWarn: { backgroundColor: theme.colors.warningSoft },
   pillText: { color: theme.colors.success, fontWeight: "800", fontSize: 12 },
-  chevron: { color: theme.colors.primary, fontWeight: "900", fontSize: 20 },
+  chevron: { color: theme.colors.primaryText, fontWeight: "900", fontSize: 20 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
 });

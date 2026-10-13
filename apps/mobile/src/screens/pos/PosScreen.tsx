@@ -9,6 +9,7 @@ import { showAlert } from "../../components/platform";
 import { useApp } from "../../context/AppContext";
 import { PAYMENT_METHODS, type Customer, type PaymentMethod, type Product } from "../../domain/types";
 import { theme } from "../../theme";
+import { quoteTotals } from "../../domain/pricing";
 
 type Props = NativeStackScreenProps<RootStackParamList, "POSVenta">;
 
@@ -39,8 +40,7 @@ export function PosScreen({ navigation }: Props) {
   const [received, setReceived] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const totalCents = draft.items.reduce((sum, item) => sum + Math.round((item.quantity * item.unitPrice + Number.EPSILON) * 100), 0);
-  const total = totalCents / 100;
+  const { total } = quoteTotals(draft.items);
   const count = draft.items.reduce((sum, item) => sum + item.quantity, 0);
   const isFactura = draft.documentType === "FACTURA";
   const isCredit = draft.paymentMethod === "CREDITO";
@@ -116,7 +116,7 @@ export function PosScreen({ navigation }: Props) {
   const catalogPane = (
     <View style={styles.pane}>
       <View style={styles.searchRow}>
-        <TextInput value={search} onChangeText={setSearch} placeholder="Buscar producto…" placeholderTextColor="#9AA1B1" style={styles.search} accessibilityLabel="Buscar producto" />
+        <TextInput value={search} onChangeText={setSearch} placeholder="Buscar producto…" placeholderTextColor={theme.colors.muted} style={styles.search} accessibilityLabel="Buscar producto" />
         <Pressable accessibilityRole="button" onPress={() => setQuickOpen((v) => !v)} style={styles.quickBtn}><Text style={styles.quickBtnText}>＋ Otro</Text></Pressable>
       </View>
       {quickOpen ? (
@@ -250,20 +250,20 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: "row", gap: 8 },
   search: { flex: 1, minHeight: 48, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
   quickBtn: { minHeight: 48, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.primary, justifyContent: "center", backgroundColor: theme.colors.surface },
-  quickBtnText: { color: theme.colors.primary, fontWeight: "900" },
+  quickBtnText: { color: theme.colors.primaryText, fontWeight: "900" },
   quickBox: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 16, padding: 14, gap: 10 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingBottom: 90 },
   tile: { width: "31.5%", minWidth: 120, flexGrow: 1, minHeight: 104, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, justifyContent: "space-between" },
   tileHover: { borderColor: theme.colors.primary, backgroundColor: theme.colors.hover },
   tileActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
   tileName: { color: theme.colors.text, fontWeight: "800", paddingRight: 22 },
-  tilePrice: { color: theme.colors.primary, fontWeight: "900", fontSize: 16 },
+  tilePrice: { color: theme.colors.primaryText, fontWeight: "900", fontSize: 16 },
   stock: { color: theme.colors.muted, fontSize: 11.5, marginTop: 2, fontWeight: "700" },
   badge: { position: "absolute", top: 8, right: 8, minWidth: 22, height: 22, borderRadius: 11, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
   badgeText: { color: "white", fontWeight: "900", fontSize: 12 },
   tileNew: { borderStyle: "dashed", alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
-  tileNewPlus: { color: theme.colors.primary, fontSize: 24, fontWeight: "900" },
-  tileNewText: { color: theme.colors.primary, fontWeight: "800", marginTop: 2 },
+  tileNewPlus: { color: theme.colors.primaryText, fontSize: 24, fontWeight: "900" },
+  tileNewText: { color: theme.colors.primaryText, fontWeight: "800", marginTop: 2 },
   ticket: { flex: 1, backgroundColor: theme.colors.surface, borderRadius: 18, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
   ticketWide: { flexGrow: 0, flexShrink: 0, flexBasis: 420, width: 420 },
   ticketBody: { padding: 16, gap: 10 },
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   lineSub: { color: theme.colors.muted, fontSize: 12 },
   stepper: { flexDirection: "row", alignItems: "center", gap: 4 },
   stepBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: theme.colors.primarySoft, alignItems: "center", justifyContent: "center" },
-  stepText: { color: theme.colors.primary, fontWeight: "900", fontSize: 16 },
+  stepText: { color: theme.colors.primaryText, fontWeight: "900", fontSize: 16 },
   qty: { minWidth: 24, textAlign: "center", fontWeight: "900", color: theme.colors.text },
   lineTotal: { minWidth: 68, textAlign: "right", fontWeight: "900", color: theme.colors.text },
   remove: { color: theme.colors.danger, fontSize: 22, fontWeight: "900", paddingHorizontal: 4 },
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   totalLabel: { color: theme.colors.muted, fontWeight: "800" },
   totalValue: { color: theme.colors.text, fontWeight: "900", fontSize: 28, letterSpacing: -0.5 },
-  back: { color: theme.colors.primary, fontWeight: "800", textAlign: "center", paddingVertical: 4 },
+  back: { color: theme.colors.primaryText, fontWeight: "800", textAlign: "center", paddingVertical: 4 },
   cartBar: { position: "absolute", left: 0, right: 0, bottom: 8, minHeight: 56, borderRadius: 16, backgroundColor: theme.colors.primary, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   cartBarText: { color: "white", fontWeight: "900", fontSize: 16 },
   cartBarTotal: { color: "white", fontWeight: "900", fontSize: 20 }

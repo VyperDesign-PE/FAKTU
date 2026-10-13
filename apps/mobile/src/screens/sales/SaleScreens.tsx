@@ -9,12 +9,13 @@ import { useApp } from "../../context/AppContext";
 import { PAYMENT_METHODS, type Customer, type PaymentMethod } from "../../domain/types";
 import { createReceiptSharePackage, type ReceiptSharePackage } from "../../services/api";
 import { theme } from "../../theme";
+import { quoteTotals } from "../../domain/pricing";
 import { shareLink, showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
 function totalOf(items: { quantity: number; unitPrice: number }[]) {
-  return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  return quoteTotals(items).total;
 }
 
 export function NewSaleScreen({ navigation }: P<"NewSale">) {
@@ -150,8 +151,7 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
 export function SaleSummaryScreen({ navigation }: P<"SaleSummary">) {
   const { draft, createReceipt, online, setPayment } = useApp();
   const total = totalOf(draft.items);
-  const igv = total - total / 1.18;
-  const base = total - igv;
+  const { igv, subtotal: base } = quoteTotals(draft.items);
   const [busy, setBusy] = useState(false);
   const [received, setReceived] = useState(draft.amountReceived ? draft.amountReceived.toFixed(2) : "");
   const receivedAmount = received.trim() ? Number(received.replace(",", ".")) : undefined;
@@ -265,8 +265,8 @@ export function ShareReceiptScreen({ navigation, route }: P<"ShareReceipt">) {
 
 const styles = StyleSheet.create({
   productGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, productCard: { width: "31%", minHeight: 96, padding: 11, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, justifyContent: "space-between" },
-  productName: { color: theme.colors.text, fontWeight: "800" }, price: { color: theme.colors.primary, fontWeight: "900", marginTop: 8 }, muted: { color: theme.colors.muted, lineHeight: 20 }, warning: { color: theme.colors.warning, fontWeight: "800" },
-  cartRow: { flexDirection: "row", alignItems: "center", gap: 10 }, qty: { flexDirection: "row", alignItems: "center", gap: 8 }, qtyButton: { color: theme.colors.primary, fontSize: 22, fontWeight: "900", padding: 5 }, qtyValue: { minWidth: 20, textAlign: "center", fontWeight: "900" }, delete: { color: theme.colors.danger, fontSize: 24, fontWeight: "900" },
+  productName: { color: theme.colors.text, fontWeight: "800" }, price: { color: theme.colors.primaryText, fontWeight: "900", marginTop: 8 }, muted: { color: theme.colors.muted, lineHeight: 20 }, warning: { color: theme.colors.warning, fontWeight: "800" },
+  cartRow: { flexDirection: "row", alignItems: "center", gap: 10 }, qty: { flexDirection: "row", alignItems: "center", gap: 8 }, qtyButton: { color: theme.colors.primaryText, fontSize: 22, fontWeight: "900", padding: 5 }, qtyValue: { minWidth: 20, textAlign: "center", fontWeight: "900" }, delete: { color: theme.colors.danger, fontSize: 24, fontWeight: "900" },
   docTitle: { fontSize: 17, fontWeight: "900", color: theme.colors.text }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, resultIcon: { alignItems: "center", paddingVertical: 10 }, resultCheck: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.colors.success, color: "white", textAlign: "center", lineHeight: 72, fontSize: 42, fontWeight: "900" },
   shareGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, shareCard: { width: "48%", minHeight: 90, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 15, alignItems: "center", justifyContent: "center", padding: 12 }, shareActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, shareTitle: { color: theme.colors.text, fontWeight: "900", textAlign: "center" }
 });

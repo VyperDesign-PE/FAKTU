@@ -6,7 +6,7 @@
 
 Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App web/móvil (React Native + Expo, PWA), API (Fastify + PostgreSQL) y facturación electrónica con APIsPERU o Nubefact mediante adaptadores desacoplados.
 
-## Versión actual: 0.16.0 — lista para el piloto
+## Versión actual: 0.19.0 — lista para el piloto
 
 - **Proveedor:** APIsPERU para el piloto (sin pago inicial, S/ 25 por negocio). Nubefact (OSE/PSE) queda listo como alternativa para escalar.
 - **Plataforma:** app web instalable (PWA), servida por la misma API. La app Android sale del mismo código cuando el piloto lo valide.

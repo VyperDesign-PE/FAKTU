@@ -118,7 +118,7 @@ export function SeguridadScreen(_: P) {
 const styles = StyleSheet.create({
   copy: { color: theme.colors.muted, lineHeight: 21 },
   step: { color: theme.colors.text, fontWeight: "700", lineHeight: 21 },
-  secret: { color: theme.colors.primary, fontWeight: "900", fontSize: 20, letterSpacing: 2, paddingVertical: 6 },
+  secret: { color: theme.colors.primaryText, fontWeight: "900", fontSize: 20, letterSpacing: 2, paddingVertical: 6 },
   codes: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   code: { fontWeight: "900", fontSize: 16, color: theme.colors.text, letterSpacing: 1, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
   table: { backgroundColor: theme.colors.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },

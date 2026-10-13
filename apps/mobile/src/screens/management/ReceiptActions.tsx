@@ -19,7 +19,7 @@ import { theme } from "../../theme";
 type Action = "CREDIT" | "BAJA" | "DEBIT";
 
 const money = (value: number) => `S/ ${value.toFixed(2)}`;
-const statusLabel = (status?: string) => ({ ACEPTADO: "Aceptada", ACCEPTED: "Aceptada", RECHAZADO: "Rechazada", REJECTED: "Rechazada", ERROR: "Revisar" } as Record<string, string>)[status ?? ""] ?? "En proceso";
+const statusLabel = (status?: string) => ({ ACEPTADO: "Aceptada", ACCEPTED: "Aceptada", RECHAZADO: "Rechazada", REJECTED: "Rechazada", ERROR: "Requiere revisión" } as Record<string, string>)[status ?? ""] ?? "En proceso";
 
 /**
  * Corregir o anular una venta aceptada:

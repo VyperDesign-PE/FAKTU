@@ -330,3 +330,11 @@ Correcciones de la revisión técnica de la 0.12.2.
 - RUC del onboarding y del POS usan el padrón local antes de cualquier respaldo externo.
 - La UI identifica explícitamente `Padrón Reducido oficial de SUNAT` y muestra fecha de actualización.
 - Nuevo endpoint `/v1/system/ruc-registry/status` para Estado del sistema.
+
+# Sin publicar - Mejoras de navegación, consistencia y marca (rama de trabajo)
+
+- Rutas `Customers`, `CustomerForm` y `BillingSettings` registradas; "Proveedor y ambiente" y "Productos y stock" accesibles desde Más.
+- Una sola definición de venta vigente, por revisar y pendientes (`domain/receiptMetrics.ts`) y de estados (`domain/receiptStatus.ts`).
+- IGV mostrado en el celular igual al del servidor (`domain/pricing.ts`, verificado contra `pricing.ts` de la API).
+- Marca "Ágil": paleta única (`brand/palette.ts`), isotipo y iconos coherentes, estados con contraste AA.
+- Menú móvil: Inicio, Vender, Historial, Por cobrar, Más.

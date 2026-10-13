@@ -182,7 +182,7 @@ export function ReadyScreen({ navigation }: P<"Ready">) {
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: "center", paddingVertical: 24, gap: 8 }, heroIcon: { fontSize: 58, color: theme.colors.primary }, heroTitle: { fontSize: 22, fontWeight: "900", color: theme.colors.primary },
+  hero: { alignItems: "center", paddingVertical: 24, gap: 8 }, heroIcon: { fontSize: 58, color: theme.colors.primaryText }, heroTitle: { fontSize: 22, fontWeight: "900", color: theme.colors.primaryText },
   bullet: { color: theme.colors.text, lineHeight: 23, fontWeight: "700" }, safe: { color: theme.colors.success, fontWeight: "800" }, note: { color: theme.colors.muted, lineHeight: 20 },
   business: { fontSize: 19, fontWeight: "900", color: theme.colors.success, textAlign: "center", marginBottom: 4 }, doc: { fontWeight: "900", color: theme.colors.text },
   center: { flex: 1, minHeight: 340, alignItems: "center", justifyContent: "center", gap: 14 }, centerText: { color: theme.colors.muted, fontWeight: "700" },

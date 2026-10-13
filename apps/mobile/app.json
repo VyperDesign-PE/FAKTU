@@ -2,7 +2,7 @@
   "expo": {
     "name": "FAKTU",
     "slug": "faktu",
-    "version": "0.16.0",
+    "version": "0.19.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
@@ -17,8 +17,8 @@
       "name": "FAKTU",
       "shortName": "FAKTU",
       "lang": "es",
-      "themeColor": "#5B2FD5",
-      "backgroundColor": "#F7F8FC",
+      "themeColor": "#101A3D",
+      "backgroundColor": "#F5F7FC",
       "favicon": "./public/favicon.png"
     },
     "icon": "./assets/icon.png"

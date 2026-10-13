@@ -9,6 +9,7 @@ import { useApp } from "../../context/AppContext";
 import { ReceiptList } from "../management/ManagementScreens";
 import { getBillingSettings, getDailyClose, getInsights, type BillingSettings, type DailyClose, type Insights } from "../../services/api";
 import { theme } from "../../theme";
+import { attentionCount, awaitingSendCount, effectiveSales } from "../../domain/receiptMetrics";
 
 type Props<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
@@ -127,11 +128,10 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
 }
 
 export function HistorialComprobantesScreen({ navigation }: Props<"HistorialComprobantes">) {
-  const { queue, history, pendingCount, refreshHistory, online } = useApp();
+  const { queue, history, refreshHistory, online } = useApp();
   useEffect(() => { if (online) void refreshHistory(); }, [online, refreshHistory]);
-  const accepted = history.filter((item) => item.status === "ACCEPTED" && !item.voided && item.documentType !== "NOTA_CREDITO").length;
-  const errors = queue.filter((item) => item.status === "ERROR" || item.status === "REJECTED").length
-    + history.filter((item) => item.status === "REJECTED").length;
+  const accepted = effectiveSales(history).length;
+  const errors = attentionCount(queue, history);
 
   return (
     <ResponsiveShell
@@ -142,7 +142,7 @@ export function HistorialComprobantesScreen({ navigation }: Props<"HistorialComp
     >
       <View style={styles.metricsGrid}>
         <MetricCard label="Aceptados" value={String(accepted)} helper="Vigentes (sin anulados)" />
-        <MetricCard label="Pendientes" value={String(pendingCount)} helper="Cola de sincronización" />
+        <MetricCard label="Pendientes" value={String(awaitingSendCount(queue))} helper="Guardados, por enviar" />
         <MetricCard label="Por revisar" value={String(errors)} helper="Requieren atención" />
       </View>
       <ReceiptList onOpen={(clientTransactionId) => navigation.navigate("ReceiptDetail", { clientTransactionId })} />
@@ -156,14 +156,16 @@ export function ConfiguracionScreen({ navigation }: Props<"Configuracion">) {
       currentRoute="Configuracion"
       navigation={navigation}
       title="Configuración"
-      subtitle="Administración del negocio, facturación electrónica, suscripción y soporte."
+      subtitle="Productos, clientes, facturación, seguridad y soporte."
     >
       <View style={styles.twoColumns}>
+        <ConfigLink title="Productos y stock" detail="Tu catálogo, precios y control de stock" onPress={() => navigation.navigate("Productos")} />
         <ConfigLink title="Clientes" detail="Tus clientes frecuentes y sus datos" onPress={() => navigation.navigate("Customers")} />
         <ConfigLink title="Guías de remisión" detail="Traslado de mercadería: remitente o transportista" onPress={() => navigation.navigate("Guides")} />
         <ConfigLink title="Cierre de caja y reportes" detail="Ventas del día por medio de pago y registro mensual para tu contador" onPress={() => navigation.navigate("CashClose")} />
         <ConfigLink title="Datos de empresa" detail="RUC, razón social, nombre comercial y dirección" onPress={() => navigation.navigate("Business")} />
-        <ConfigLink title="Facturación electrónica" detail="Proveedor externo, series, comprobantes habilitados y conexión" onPress={() => navigation.navigate("SystemStatus")} />
+        <ConfigLink title="Facturación electrónica" detail="Estado de la conexión, comprobantes pendientes y consulta RUC" onPress={() => navigation.navigate("SystemStatus")} />
+        <ConfigLink title="Proveedor y ambiente" detail="Elegir proveedor de facturación, probar la conexión y ver si estás en modo práctica" onPress={() => navigation.navigate("BillingSettings")} />
         <ConfigLink title="Suscripción SaaS" detail="Plan mensual, estado de pago, renovación y comprobantes de cobro" />
         <ConfigLink title="Seguridad" detail="Verificación en dos pasos y registro de actividad de tu negocio" onPress={() => navigation.navigate("Seguridad")} />
         <ConfigLink title="Soporte" detail="Ayuda sencilla y diagnóstico del sistema" onPress={() => navigation.navigate("Support")} />
@@ -206,22 +208,22 @@ function ConfigLink({ title, detail, onPress }: { title: string; detail: string;
 const styles = StyleSheet.create({
   heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   hero: { flexGrow: 2, flexBasis: 340, minWidth: 280, backgroundColor: theme.colors.ink, borderRadius: 22, padding: 20, gap: 4 },
-  heroLabel: { color: "#A9AED3", fontWeight: "800" },
+  heroLabel: { color: theme.colors.onInkMuted, fontWeight: "800" },
   heroValue: { color: "#FFFFFF", fontWeight: "900", fontSize: 40, letterSpacing: -1 },
-  heroSub: { color: "#C9CCE8", fontSize: 13 },
+  heroSub: { color: theme.colors.onInkMuted, fontSize: 13 },
   bars: { flexDirection: "row", gap: 8, height: 90, alignItems: "flex-end", marginVertical: 12 },
   barCol: { flex: 1, height: "100%", alignItems: "center", gap: 4 },
   barTrack: { flex: 1, width: "100%", justifyContent: "flex-end" },
-  bar: { width: "100%", backgroundColor: "#4B52A0", borderRadius: 6 },
+  bar: { width: "100%", backgroundColor: theme.colors.onInkAccent, borderRadius: 6 },
   barToday: { backgroundColor: theme.colors.mint },
-  barLabel: { color: "#8D93C4", fontSize: 11, fontWeight: "800" },
+  barLabel: { color: theme.colors.onInkMuted, fontSize: 11, fontWeight: "800" },
   sideCards: { flexGrow: 1, flexBasis: 240, gap: 12 },
   miniCard: { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16, justifyContent: "center" },
   miniWarn: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
   topRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  topRank: { width: 22, height: 22, borderRadius: 11, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, textAlign: "center", fontWeight: "900", fontSize: 12, lineHeight: 22 },
+  topRank: { width: 22, height: 22, borderRadius: 11, backgroundColor: theme.colors.primarySoft, color: theme.colors.primaryText, textAlign: "center", fontWeight: "900", fontSize: 12, lineHeight: 22 },
   topValue: { color: theme.colors.text, fontWeight: "800" },
-  shortcut: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+  shortcut: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
   shortcutText: { color: theme.colors.text, fontWeight: "700", flex: 1 },
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   metricCard: { minWidth: 190, flexGrow: 1, flexBasis: 0, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16 },
@@ -234,5 +236,5 @@ const styles = StyleSheet.create({
   copy: { color: theme.colors.muted, lineHeight: 21 },
   bullet: { color: theme.colors.muted, lineHeight: 21 },
   configLink: { minWidth: 280, flexGrow: 1, flexBasis: 0, minHeight: 100, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 18, flexDirection: "row", alignItems: "center", gap: 12 },
-  chevron: { color: theme.colors.primary, fontWeight: "900" }
+  chevron: { color: theme.colors.primaryText, fontWeight: "900" }
 });
