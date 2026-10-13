@@ -15,7 +15,7 @@ const pairs: Array<[keyof ThemeColors, keyof ThemeColors, number]> = [
   ["text", "background", 4.5], ["text", "surface", 4.5], ["muted", "background", 4.5], ["muted", "surface", 4.5], ["muted", "mutedSoft", 4.5],
   ["success", "surface", 4.5], ["success", "successSoft", 4.5], ["warning", "surface", 4.5], ["warning", "warningSoft", 4.5],
   ["danger", "surface", 4.5], ["danger", "dangerSoft", 4.5], ["primaryText", "background", 4.5], ["primaryText", "surface", 4.5], ["primaryText", "primarySoft", 4.5], ["primaryText", "mutedSoft", 4.5],
-  ["text", "infoSoft", 4.5], ["text", "primarySoft", 4.5], ["border", "surface", 1.0]
+  ["text", "infoSoft", 4.5], ["text", "primarySoft", 4.5], ["accentViolet", "accentVioletSoft", 3], ["accentTeal", "accentTealSoft", 3], ["primaryText", "primarySoft", 3], ["border", "surface", 1.0]
 ];
 let checked = 0;
 for (const [name, palette] of [["claro", light], ["oscuro", dark]] as const) {

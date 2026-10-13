@@ -8,6 +8,9 @@
     <meta name="description" content="Boletas y facturas electrónicas para tu negocio." />
     <meta name="theme-color" content="#101A3D" />
     <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -42,6 +45,10 @@
         --f-infoSoft: #EEF3FA;
         --f-infoBorder: #C9D6EA;
         --f-mutedSoft: #EBEEF3;
+        --f-accentViolet: #5B3FB8;
+        --f-accentVioletSoft: #EFEAFB;
+        --f-accentTeal: #0F6E66;
+        --f-accentTealSoft: #E1F3F0;
         --f-text: #1A2332;
         --f-muted: #586374;
         --f-border: #D8DEE8;
@@ -76,6 +83,10 @@
         --f-infoSoft: #16233F;
         --f-infoBorder: #2B3E66;
         --f-mutedSoft: #1B2740;
+        --f-accentViolet: #B3A1F2;
+        --f-accentVioletSoft: #272047;
+        --f-accentTeal: #6FD3C4;
+        --f-accentTealSoft: #11302D;
         --f-text: #E6EAF2;
         --f-muted: #9AA6BA;
         --f-border: #26324A;
@@ -83,6 +94,8 @@
         color-scheme: dark;
       }
       /* palette:end */
+      /* Inter si cargó; si no (sin red), la fuente del sistema. */
+      #root, #root * { font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-feature-settings: "cv11", "ss01"; }
       html, body { height: 100%; }
       body { overflow: hidden; background: var(--f-background); color: var(--f-text); }
       #root { display: flex; height: 100%; flex: 1; }

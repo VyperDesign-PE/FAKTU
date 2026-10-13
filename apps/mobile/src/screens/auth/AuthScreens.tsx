@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
-import { Screen } from "../../components/Screen";
-import { BrandLogo } from "../../components/Brand";
-import { Card, PrimaryButton, TextField } from "../../components/Ui";
+import { AuthLayout, OrDivider } from "../../components/AuthLayout";
+import { Icon } from "../../components/Icon";
+import { PrimaryButton, TextField } from "../../components/Ui";
 import { useAuth } from "../../context/AuthContext";
 import { getPublicConfig } from "../../services/api";
 import { hasErrors, normalizeEmail, validateLogin, validateRegistration } from "../../auth/validation";
@@ -13,12 +13,11 @@ import { showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
-function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
+function SecurityNote() {
   return (
-    <View style={styles.header}>
-      <BrandLogo size={52} />
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+    <View style={styles.note}>
+      <Icon name="lock" size={16} color={theme.colors.muted} />
+      <Text style={styles.noteText}>Conexión cifrada. Tu sesión se guarda de forma segura en este dispositivo y nunca almacenamos tu contraseña en él.</Text>
     </View>
   );
 }
@@ -27,7 +26,14 @@ export function LoginScreen({ navigation }: P<"Login">) {
   const { signIn, completeMfa } = useAuth();
   const [mfaToken, setMfaToken] = useState<string>();
   const [demo, setDemo] = useState<{ email: string; password: string; business: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   useEffect(() => { getPublicConfig().then((config) => setDemo(config.demo)).catch(() => undefined); }, []);
+
+  const errors = useMemo(() => validateLogin(email, password), [email, password]);
 
   async function enterDemo() {
     if (!demo) return;
@@ -41,17 +47,10 @@ export function LoginScreen({ navigation }: P<"Login">) {
       setBusy(false);
     }
   }
-  const [code, setCode] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-
-  const errors = useMemo(() => validateLogin(email, password), [email, password]);
 
   async function submit() {
     setSubmitted(true);
-    if (hasErrors(errors)) return;
+    if (!mfaToken && hasErrors(errors)) return;
     setBusy(true);
     try {
       if (mfaToken) {
@@ -69,67 +68,85 @@ export function LoginScreen({ navigation }: P<"Login">) {
     }
   }
 
+  function forgotPassword() {
+    // La recuperación automática todavía no existe en el servidor: se explica en vez de simularla.
+    showAlert("Recuperar contraseña", "La recuperación automática todavía no está disponible. Escribe al soporte de FAKTU desde el correo con el que te registraste y te ayudaremos a recuperar el acceso.");
+  }
+
   if (mfaToken) {
     return (
-      <Screen narrow>
-        <AuthHeader title="Verificación en dos pasos" subtitle="Abre tu app de autenticación e ingresa el código de 6 dígitos de FAKTU." />
-        <Card>
-          <TextField label="Código de 6 dígitos" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad" placeholder="123456" autoComplete="one-time-code" onSubmitEditing={() => void submit()} />
-          <PrimaryButton label={busy ? "VERIFICANDO..." : "VERIFICAR"} onPress={() => void submit()} disabled={busy || code.length !== 6} />
-          <Pressable onPress={() => { setMfaToken(undefined); setCode(""); }}><Text style={styles.link}>Volver</Text></Pressable>
-        </Card>
-      </Screen>
+      <AuthLayout title="Verificación en dos pasos" subtitle="Abre tu app de autenticación e ingresa el código de 6 dígitos de FAKTU. También puedes usar un código de recuperación.">
+        <TextField label="Código de verificación" icon="shield" value={code} onChangeText={(v) => setCode(v.replace(/[^\dA-Za-z-]/g, "").slice(0, 12))} keyboardType="default" autoCapitalize="none" placeholder="123456" autoComplete="one-time-code" onSubmitEditing={() => void submit()} />
+        <PrimaryButton label={busy ? "Verificando…" : "Verificar e ingresar"} onPress={() => void submit()} disabled={busy || code.length < 6} />
+        <Pressable accessibilityRole="button" onPress={() => { setMfaToken(undefined); setCode(""); }} style={styles.linkRow}>
+          <Icon name="back" size={16} color={theme.colors.primaryText} />
+          <Text style={styles.link}>Usar otra cuenta</Text>
+        </Pressable>
+      </AuthLayout>
     );
   }
 
   return (
-    <Screen narrow>
-      <AuthHeader title="Bienvenido nuevamente" subtitle="Ingresa para continuar con tu negocio." />
+    <AuthLayout
+      title="Ingresa a tu cuenta"
+      subtitle="Bienvenido de nuevo. Ingresa con el correo de tu negocio."
+      footer={
+        <View style={styles.footer}>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchText}>¿Aún no tienes una cuenta?</Text>
+            <Pressable accessibilityRole="link" onPress={() => navigation.navigate("Register")} hitSlop={8}>
+              <Text style={styles.link}>Crear cuenta</Text>
+            </Pressable>
+          </View>
+          <SecurityNote />
+        </View>
+      }
+    >
+      <TextField
+        label="Correo electrónico"
+        icon="mail"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="tu@negocio.pe"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoComplete="email"
+        textContentType="emailAddress"
+        error={submitted ? errors.email : undefined}
+      />
+      <TextField
+        label="Contraseña"
+        icon="lock"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Tu contraseña"
+        secureTextEntry
+        secureToggle
+        autoCapitalize="none"
+        autoComplete="current-password"
+        textContentType="password"
+        error={submitted ? errors.password : undefined}
+        onSubmitEditing={submit}
+      />
+      <Pressable accessibilityRole="button" onPress={forgotPassword} style={styles.forgot} hitSlop={6}>
+        <Text style={styles.linkSmall}>¿Olvidaste tu contraseña?</Text>
+      </Pressable>
+      <PrimaryButton label={busy ? "Ingresando…" : "Ingresar"} onPress={submit} disabled={busy} />
+
       {demo ? (
-        <Card tone="info">
-          <Text style={styles.demoTitle}>¿Quieres probar FAKTU?</Text>
-          <Text style={styles.demoText}>Entra a la demo de {demo.business}: ventas, fiados, stock y comprobantes de práctica (sin validez SUNAT).</Text>
-          <PrimaryButton label={busy ? "ABRIENDO..." : "VER LA DEMO"} onPress={() => void enterDemo()} tone="success" disabled={busy} />
-        </Card>
+        <>
+          <OrDivider />
+          <Pressable accessibilityRole="button" onPress={() => void enterDemo()} disabled={busy} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.demo, hovered && { backgroundColor: theme.colors.hover }]}>
+            <View style={styles.demoIcon}><Icon name="zap" size={18} color={theme.colors.primaryText} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.demoTitle}>Explorar la demo</Text>
+              <Text style={styles.demoText}>{demo.business}: ventas, fiados y stock con datos de prueba (sin validez SUNAT).</Text>
+            </View>
+            <Icon name="chevron" size={18} color={theme.colors.muted} />
+          </Pressable>
+        </>
       ) : null}
-      <Card>
-        <TextField
-          label="Correo electrónico"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="tu@negocio.pe"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          textContentType="emailAddress"
-          error={submitted ? errors.email : undefined}
-        />
-        <TextField
-          label="Contraseña"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="••••••••"
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete="current-password"
-          textContentType="password"
-          error={submitted ? errors.password : undefined}
-          onSubmitEditing={submit}
-        />
-        <PrimaryButton label={busy ? "INGRESANDO..." : "INGRESAR"} onPress={submit} disabled={busy} />
-      </Card>
-
-      <View style={styles.registerBox}>
-        <Text style={styles.registerText}>¿Aún no tienes una cuenta?</Text>
-        <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Register")} hitSlop={8}>
-          <Text style={styles.registerLink}>Registrarme</Text>
-        </Pressable>
-      </View>
-
-      <Card tone="info">
-        <Text style={styles.securityText}>Tu sesión se guarda de forma segura en el dispositivo. Nunca almacenamos tu contraseña.</Text>
-      </Card>
-    </Screen>
+    </AuthLayout>
   );
 }
 
@@ -158,67 +175,77 @@ export function RegisterScreen({ navigation }: P<"Register">) {
   }
 
   return (
-    <Screen narrow>
-      <AuthHeader title="Crea tu cuenta" subtitle="Primero creamos tu acceso. Luego configuramos el negocio." />
-      <Card>
-        <TextField
-          label="Correo electrónico"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="tu@negocio.pe"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          textContentType="emailAddress"
-          error={submitted ? errors.email : undefined}
-        />
-        <TextField
-          label="Contraseña"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Mínimo 8 caracteres"
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete="new-password"
-          textContentType="newPassword"
-          error={submitted ? errors.password : undefined}
-        />
-        <TextField
-          label="Confirmar contraseña"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          placeholder="Repite tu contraseña"
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete="new-password"
-          textContentType="newPassword"
-          error={submitted ? errors.confirmPassword : undefined}
-          onSubmitEditing={submit}
-        />
-        <PrimaryButton label={busy ? "CREANDO CUENTA..." : "CREAR CUENTA"} onPress={submit} disabled={busy} tone="success" />
-      </Card>
-
-      <View style={styles.registerBox}>
-        <Text style={styles.registerText}>¿Ya tienes una cuenta?</Text>
-        <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Login")} hitSlop={8}>
-          <Text style={styles.registerLink}>Ingresar</Text>
-        </Pressable>
-      </View>
-    </Screen>
+    <AuthLayout
+      title="Crea tu cuenta"
+      subtitle="Primero creamos tu acceso. Después configuramos tu negocio en unos minutos."
+      footer={
+        <View style={styles.footer}>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchText}>¿Ya tienes una cuenta?</Text>
+            <Pressable accessibilityRole="link" onPress={() => navigation.navigate("Login")} hitSlop={8}>
+              <Text style={styles.link}>Ingresar</Text>
+            </Pressable>
+          </View>
+          <SecurityNote />
+        </View>
+      }
+    >
+      <TextField
+        label="Correo electrónico"
+        icon="mail"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="tu@negocio.pe"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoComplete="email"
+        textContentType="emailAddress"
+        error={submitted ? errors.email : undefined}
+      />
+      <TextField
+        label="Contraseña"
+        icon="lock"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Mínimo 8 caracteres"
+        secureTextEntry
+        secureToggle
+        autoCapitalize="none"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        error={submitted ? errors.password : undefined}
+      />
+      <TextField
+        label="Confirmar contraseña"
+        icon="lock"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        placeholder="Repite tu contraseña"
+        secureTextEntry
+        secureToggle
+        autoCapitalize="none"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        error={submitted ? errors.confirmPassword : undefined}
+        onSubmitEditing={submit}
+      />
+      <PrimaryButton label={busy ? "Creando cuenta…" : "Crear cuenta"} onPress={submit} disabled={busy} />
+    </AuthLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  demoTitle: { color: theme.colors.text, fontWeight: "700", fontSize: 16 },
-  demoText: { color: theme.colors.muted, lineHeight: 20 },
-  link: { color: theme.colors.primaryText, fontWeight: "600", textAlign: "center", paddingVertical: 6 },
-  header: { alignItems: "center", gap: 8, paddingTop: 24, paddingBottom: 12 },
-  logo: { width: 68, height: 68, borderRadius: 12, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" },
-  logoText: { color: "white", fontWeight: "700", fontSize: 26 },
-  title: { color: theme.colors.text, fontSize: 27, fontWeight: "700", textAlign: "center" },
-  subtitle: { color: theme.colors.muted, lineHeight: 21, textAlign: "center", maxWidth: 320 },
-  registerBox: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, paddingVertical: 4 },
-  registerText: { color: theme.colors.muted },
-  registerLink: { color: theme.colors.primaryText, fontWeight: "700" },
-  securityText: { color: theme.colors.muted, lineHeight: 20, textAlign: "center" }
+  footer: { gap: 18, marginTop: 22 },
+  switchRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  switchText: { color: theme.colors.muted, fontSize: 14 },
+  link: { color: theme.colors.primaryText, fontWeight: "600", fontSize: 14 },
+  linkSmall: { color: theme.colors.primaryText, fontWeight: "600", fontSize: 13 },
+  linkRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 44 },
+  forgot: { alignSelf: "flex-end", minHeight: 32, justifyContent: "center", marginTop: -6 },
+  demo: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  demoIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: theme.colors.primarySoft, alignItems: "center", justifyContent: "center" },
+  demoTitle: { color: theme.colors.text, fontWeight: "600", fontSize: 15 },
+  demoText: { color: theme.colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  note: { flexDirection: "row", gap: 10, alignItems: "flex-start", padding: 12, borderRadius: 10, backgroundColor: theme.colors.mutedSoft },
+  noteText: { flex: 1, color: theme.colors.muted, fontSize: 12, lineHeight: 18 }
 });
