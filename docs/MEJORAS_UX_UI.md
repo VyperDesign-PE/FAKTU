@@ -32,6 +32,9 @@ Estados: **Hecho** (cambio + prueba), **Parcial**, **Pendiente** (sin cambios), 
 
 Hallazgos nuevos confirmados: (a) el icono instalable y el isotipo de la app eran dos dibujos distintos; (b) el texto de éxito y de advertencia no llegaba a contraste AA; (c) controles de 38–41 px; (d) "Faktu" frente a "FAKTU" en textos; (e) el menú móvil ("Ventas", "Fiados") difería del de escritorio; (f) `/health/ready` se podía servir desde la caché del service worker; (g) arrancar API y worker a la vez con `DB_AUTO_MIGRATE=true` fallaba con `duplicate key`.
 
+## Rediseño profesional
+Tras la revisión visual se reemplazó el acabado juvenil (verde menta, tipografía muy gruesa, esquinas muy redondeadas, símbolos de texto) por un panel de gestión sobrio, y se corrigió el problema de fondo de navegación: el botón "atrás" del navegador sacaba de la app (la URL nunca cambiaba) y varias pantallas no tenían forma de volver. Detalle en `docs/BRANDING.md`.
+
 ## Qué cambió para quien usa la app
 - Menú móvil: Inicio, Vender, Historial, Por cobrar, Más. Productos, Clientes, Guías, Facturación y Seguridad están en Más.
 - Un comprobante con error ya no se cuenta a la vez como "Pendiente" y "Por revisar".

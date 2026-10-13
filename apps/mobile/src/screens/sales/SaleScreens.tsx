@@ -27,10 +27,10 @@ export function NewSaleScreen({ navigation }: P<"NewSale">) {
     {!online ? <Card tone="warning"><Text style={styles.warning}>Sin Internet. Puedes seguir vendiendo.</Text></Card> : null}
     <SectionTitle>Favoritos</SectionTitle>
     <View style={styles.productGrid}>{catalog.filter((p) => p.favorite).slice(0, 8).map((p) => <Pressable key={p.id} style={styles.productCard} onPress={() => addItem(p)}><Text style={styles.productName}>{p.name}</Text><Text style={styles.price}>S/ {p.unitPrice.toFixed(2)}</Text></Pressable>)}</View>
-    <PrimaryButton label="+ AGREGAR PRODUCTO / SERVICIO" onPress={() => navigation.navigate("AddProduct")} tone="outline" />
-    <PrimaryButton label="VENTA RÁPIDA / MANUAL" onPress={() => navigation.navigate("QuickSale")} tone="outline" />
+    <PrimaryButton label="+ Agregar producto / servicio" onPress={() => navigation.navigate("AddProduct")} tone="outline" />
+    <PrimaryButton label="Venta rápida / manual" onPress={() => navigation.navigate("QuickSale")} tone="outline" />
     <Card><InfoRow label={`${draft.items.length} producto(s)`} value={`S/ ${total.toFixed(2)}`} /></Card>
-    <PrimaryButton label="VER CARRITO" onPress={() => navigation.navigate("Cart")} disabled={!draft.items.length} />
+    <PrimaryButton label="Ver carrito" onPress={() => navigation.navigate("Cart")} disabled={!draft.items.length} />
   </Screen>;
 }
 
@@ -48,7 +48,7 @@ export function AddProductScreen({ navigation }: P<"AddProduct">) {
     <TextField label="Precio de venta (S/)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="3.00" />
     <TextField label="Unidad" value={unit} onChangeText={setUnit} placeholder="Unidad" />
     <Card tone="info"><Text style={styles.muted}>Foto, categoría, código de barras e inventario quedan como opciones posteriores. No bloquean la venta.</Text></Card>
-    <PrimaryButton label="GUARDAR PRODUCTO" onPress={save} />
+    <PrimaryButton label="Guardar producto" onPress={save} />
   </Screen>;
 }
 
@@ -63,7 +63,7 @@ export function QuickSaleScreen({ navigation }: P<"QuickSale">) {
   return <Screen title="Venta rápida / manual" subtitle="Úsala para algo que no necesitas guardar en tu catálogo.">
     <TextField label="Concepto" value={concept} onChangeText={setConcept} placeholder="Ej. Reparación de puerta" />
     <TextField label="Importe (S/)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="80.00" />
-    <PrimaryButton label="AGREGAR A LA VENTA" onPress={add} tone="success" />
+    <PrimaryButton label="Agregar a la venta" onPress={add} tone="success" />
   </Screen>;
 }
 
@@ -72,9 +72,9 @@ export function CartScreen({ navigation }: P<"Cart">) {
   const total = totalOf(draft.items);
   return <Screen title="Carrito de venta" subtitle="Modifica cantidades o elimina productos.">
     {draft.items.map((item) => <Card key={item.id}><View style={styles.cartRow}><View style={{ flex: 1 }}><Text style={styles.productName}>{item.name}</Text><Text style={styles.muted}>S/ {item.unitPrice.toFixed(2)} c/u</Text></View><View style={styles.qty}><Pressable onPress={() => setItemQuantity(item.id, item.quantity - 1)}><Text style={styles.qtyButton}>−</Text></Pressable><Text style={styles.qtyValue}>{item.quantity}</Text><Pressable onPress={() => setItemQuantity(item.id, item.quantity + 1)}><Text style={styles.qtyButton}>＋</Text></Pressable></View><Pressable onPress={() => removeItem(item.id)}><Text style={styles.delete}>×</Text></Pressable></View><InfoRow label="Subtotal" value={`S/ ${(item.quantity * item.unitPrice).toFixed(2)}`} /></Card>)}
-    <PrimaryButton label="+ AGREGAR MÁS PRODUCTOS" onPress={() => navigation.navigate("NewSale")} tone="outline" />
-    <Card tone="info"><InfoRow label="TOTAL" value={`S/ ${total.toFixed(2)}`} /></Card>
-    <PrimaryButton label="CONTINUAR" onPress={() => navigation.navigate("DocumentType")} disabled={!draft.items.length} />
+    <PrimaryButton label="+ Agregar más productos" onPress={() => navigation.navigate("NewSale")} tone="outline" />
+    <Card tone="info"><InfoRow label="Total" value={`S/ ${total.toFixed(2)}`} /></Card>
+    <PrimaryButton label="Continuar" onPress={() => navigation.navigate("DocumentType")} disabled={!draft.items.length} />
   </Screen>;
 }
 
@@ -84,7 +84,7 @@ export function DocumentTypeScreen({ navigation }: P<"DocumentType">) {
     <Pressable onPress={() => setDocumentType("BOLETA")}><Card tone={draft.documentType === "BOLETA" ? "success" : "default"}><Text style={styles.docTitle}>BOLETA ELECTRÓNICA {draft.documentType === "BOLETA" ? "✓" : ""}</Text><Text>Para ventas al público.</Text></Card></Pressable>
     <Pressable onPress={() => setDocumentType("FACTURA")}><Card tone={draft.documentType === "FACTURA" ? "info" : "default"}><Text style={styles.docTitle}>FACTURA ELECTRÓNICA {draft.documentType === "FACTURA" ? "✓" : ""}</Text><Text>Para clientes con RUC.</Text></Card></Pressable>
     <Card><Text style={styles.muted}>Poner un RUC en una boleta no la convierte en factura.</Text></Card>
-    <PrimaryButton label="CONTINUAR" onPress={() => navigation.navigate("CustomerData")} />
+    <PrimaryButton label="Continuar" onPress={() => navigation.navigate("CustomerData")} />
   </Screen>;
 }
 
@@ -146,7 +146,7 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
     ) : null}
 
     {!online ? <Card tone="warning"><Text style={styles.warning}>Sin Internet: completa el nombre manualmente. La venta quedará guardada y se sincronizará cuando vuelva la conexión.</Text></Card> : null}
-    <PrimaryButton label="CONTINUAR" onPress={next} />
+    <PrimaryButton label="Continuar" onPress={next} />
   </Screen>;
 }
 
@@ -182,7 +182,7 @@ export function SaleSummaryScreen({ navigation }: P<"SaleSummary">) {
   return <Screen title="Resumen de la venta" subtitle="Revisa la información antes de emitir.">
     <Card tone="success"><Text style={styles.docTitle}>{draft.documentType}</Text>{draft.customer ? <><InfoRow label="Cliente" value={draft.customer.name ?? "-"} /><InfoRow label={draft.customer.documentType ?? "Documento"} value={draft.customer.documentNumber ?? "-"} /></> : <InfoRow label="Cliente" value="Público general" />}</Card>
     <Card>{draft.items.map((item) => <InfoRow key={item.id} label={`${item.name} × ${item.quantity}`} value={`S/ ${(item.quantity * item.unitPrice).toFixed(2)}`} />)}</Card>
-    <Card><InfoRow label="Subtotal referencial" value={`S/ ${base.toFixed(2)}`} /><InfoRow label="IGV incluido (18%)" value={`S/ ${igv.toFixed(2)}`} /><InfoRow label="TOTAL A PAGAR" value={`S/ ${total.toFixed(2)}`} /></Card>
+    <Card><InfoRow label="Subtotal referencial" value={`S/ ${base.toFixed(2)}`} /><InfoRow label="IGV incluido (18%)" value={`S/ ${igv.toFixed(2)}`} /><InfoRow label="Total a pagar" value={`S/ ${total.toFixed(2)}`} /></Card>
     <SectionTitle>¿Cómo paga el cliente?</SectionTitle>
     <View style={styles.chips}>
       {PAYMENT_METHODS.map((option) => <Chip key={option.value} label={option.label} active={draft.paymentMethod === option.value} onPress={() => choosePayment(option.value)} />)}
@@ -206,8 +206,8 @@ export function EmissionResultScreen({ navigation }: P<"EmissionResult">) {
     <View style={styles.resultIcon}><Text style={styles.resultCheck}>{accepted ? "✓" : rejected ? "✕" : "…"}</Text></View>
     <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} />{current?.paymentMethod ? <InfoRow label="Pago" value={PAYMENT_METHODS.find((m) => m.value === current.paymentMethod)?.label ?? current.paymentMethod} /> : null}{current?.amountReceived !== undefined ? <InfoRow label="Vuelto" value={`S/ ${(current.amountReceived - current.total).toFixed(2)}`} /> : null}</Card>
     {current?.errorMessage ? <Card tone={rejected ? "danger" : "info"}><Text>{current.errorMessage}</Text></Card> : null}
-    {rejected ? null : <PrimaryButton label="COMPARTIR COMPROBANTE" onPress={() => navigation.navigate("ShareReceipt")} tone="success" />}
-    <PrimaryButton label="NUEVA VENTA" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "POSVenta" }] })} tone="outline" />
+    {rejected ? null : <PrimaryButton label="Compartir comprobante" onPress={() => navigation.navigate("ShareReceipt")} tone="success" />}
+    <PrimaryButton label="Nueva venta" onPress={() => navigation.reset({ index: 1, routes: [{ name: "Dashboard" }, { name: "POSVenta" }] })} tone="outline" />
   </Screen>;
 }
 
@@ -261,14 +261,14 @@ export function ShareReceiptScreen({ navigation, route }: P<"ShareReceipt">) {
     <Card tone="info"><Text style={styles.muted}>Los enlaces son temporales y firmados. El token del proveedor de facturación nunca viaja al cliente.</Text></Card>
     {busy ? <ActivityIndicator color={theme.colors.primary} /> : null}
     <PrimaryButton label={channel ? `USAR ${channel.toUpperCase()}` : "ELIGE UNA OPCIÓN"} onPress={() => void useChannel()} disabled={!channel || busy} />
-    <PrimaryButton label="VOLVER AL INICIO" onPress={() => navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] })} tone="outline" />
+    <PrimaryButton label="Volver al inicio" onPress={() => navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] })} tone="outline" />
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  productGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, productCard: { width: "31%", minHeight: 96, padding: 11, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, justifyContent: "space-between" },
-  productName: { color: theme.colors.text, fontWeight: "800" }, price: { color: theme.colors.primaryText, fontWeight: "900", marginTop: 8 }, muted: { color: theme.colors.muted, lineHeight: 20 }, warning: { color: theme.colors.warning, fontWeight: "800" },
-  cartRow: { flexDirection: "row", alignItems: "center", gap: 10 }, qty: { flexDirection: "row", alignItems: "center", gap: 8 }, qtyButton: { color: theme.colors.primaryText, fontSize: 22, fontWeight: "900", padding: 5 }, qtyValue: { minWidth: 20, textAlign: "center", fontWeight: "900" }, delete: { color: theme.colors.danger, fontSize: 24, fontWeight: "900" },
-  docTitle: { fontSize: 17, fontWeight: "900", color: theme.colors.text }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, resultIcon: { alignItems: "center", paddingVertical: 10 }, resultCheck: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.colors.success, color: "white", textAlign: "center", lineHeight: 72, fontSize: 42, fontWeight: "900" },
-  shareGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, shareCard: { width: "48%", minHeight: 90, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 15, alignItems: "center", justifyContent: "center", padding: 12 }, shareActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, shareTitle: { color: theme.colors.text, fontWeight: "900", textAlign: "center" }
+  productGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, productCard: { width: "31%", minHeight: 96, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, justifyContent: "space-between" },
+  productName: { color: theme.colors.text, fontWeight: "600" }, price: { color: theme.colors.primaryText, fontWeight: "700", marginTop: 8 }, muted: { color: theme.colors.muted, lineHeight: 20 }, warning: { color: theme.colors.warning, fontWeight: "600" },
+  cartRow: { flexDirection: "row", alignItems: "center", gap: 10 }, qty: { flexDirection: "row", alignItems: "center", gap: 8 }, qtyButton: { color: theme.colors.primaryText, fontSize: 22, fontWeight: "700", padding: 5 }, qtyValue: { minWidth: 20, textAlign: "center", fontWeight: "700" }, delete: { color: theme.colors.danger, fontSize: 24, fontWeight: "700" },
+  docTitle: { fontSize: 17, fontWeight: "700", color: theme.colors.text }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, resultIcon: { alignItems: "center", paddingVertical: 10 }, resultCheck: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.colors.success, color: "white", textAlign: "center", lineHeight: 72, fontSize: 42, fontWeight: "700" },
+  shareGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, shareCard: { width: "48%", minHeight: 90, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 12, alignItems: "center", justifyContent: "center", padding: 12 }, shareActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, shareTitle: { color: theme.colors.text, fontWeight: "700", textAlign: "center" }
 });

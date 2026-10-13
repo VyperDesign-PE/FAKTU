@@ -152,12 +152,12 @@ export function CustomerDocumentLookupField({
 
 const styles = StyleSheet.create({
   wrapper: { gap: 7 },
-  label: { color: theme.colors.text, fontWeight: "800", marginTop: 3 },
+  label: { color: theme.colors.text, fontWeight: "600", marginTop: 3 },
   inputShell: {
     minHeight: 51,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: 13,
+    borderRadius: 10,
     paddingHorizontal: 14,
     backgroundColor: theme.colors.surface,
     flexDirection: "row",
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     minHeight: 51,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: 13,
+    borderRadius: 10,
     paddingHorizontal: 14,
     backgroundColor: theme.colors.surface,
     color: theme.colors.text,
@@ -177,11 +177,11 @@ const styles = StyleSheet.create({
   },
   lookupRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   helper: { flex: 1, color: theme.colors.muted, fontSize: 12, lineHeight: 17 },
-  errorText: { color: theme.colors.warning, fontWeight: "700" },
-  retry: { color: theme.colors.primaryText, fontWeight: "900", paddingVertical: 2 },
+  errorText: { color: theme.colors.warning, fontWeight: "600" },
+  retry: { color: theme.colors.primaryText, fontWeight: "700", paddingVertical: 2 },
   disabled: { opacity: 0.45 },
   manualNotice: { backgroundColor: theme.colors.warningSoft, borderRadius: 10, padding: 10 },
-  manualNoticeText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, fontWeight: "700" },
+  manualNoticeText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, fontWeight: "600" },
   demoNotice: { backgroundColor: theme.colors.primarySoft, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: theme.colors.primary },
-  demoNoticeText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, fontWeight: "800" }
+  demoNoticeText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, fontWeight: "600" }
 });

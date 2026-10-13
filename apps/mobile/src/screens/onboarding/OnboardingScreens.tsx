@@ -16,7 +16,7 @@ export function WelcomeScreen({ navigation }: P<"Welcome">) {
   return <Screen narrow title="¡Bienvenido!" subtitle="Emite tus boletas y facturas desde tu celular.">
     <View style={styles.hero}><BrandLogo size={64} /></View>
     <Card><Text style={styles.bullet}>✓ Fácil de usar</Text><Text style={styles.bullet}>✓ Pensado para pequeños negocios</Text><Text style={styles.bullet}>✓ Envía por WhatsApp, enlace o PDF</Text><Text style={styles.bullet}>✓ Puedes seguir vendiendo sin Internet</Text></Card>
-    <PrimaryButton label="EMPEZAR" onPress={() => navigation.navigate("VerifyPhone")} />
+    <PrimaryButton label="Empezar" onPress={() => navigation.navigate("VerifyPhone")} />
   </Screen>;
 }
 
@@ -67,7 +67,7 @@ export function EnterRucScreen({ navigation }: P<"EnterRuc">) {
   const [ruc, setRuc] = useState(profile.ruc ?? "");
   return <Screen narrow title="Ingresa el RUC de tu negocio" subtitle="Buscaremos la información de tu negocio.">
     <TextField label="RUC" value={ruc} onChangeText={setRuc} keyboardType="number-pad" placeholder="10XXXXXXXXX" />
-    <PrimaryButton label="BUSCAR" onPress={() => ruc.length === 11 ? navigation.navigate("ConfirmBusiness", { ruc }) : showAlert("RUC inválido", "El RUC debe tener 11 dígitos.")} />
+    <PrimaryButton label="Buscar" onPress={() => ruc.length === 11 ? navigation.navigate("ConfirmBusiness", { ruc }) : showAlert("RUC inválido", "El RUC debe tener 11 dígitos.")} />
   </Screen>;
 }
 
@@ -114,7 +114,7 @@ export function ConfirmBusinessScreen({ navigation, route }: P<"ConfirmBusiness"
       <TextField label="Dirección (opcional)" value={manualAddress} onChangeText={setManualAddress} placeholder="Dirección del negocio" />
     </> : null}
     <PrimaryButton label={business ? "SÍ, ESTE ES MI NEGOCIO" : "CONTINUAR CON DATOS MANUALES"} onPress={confirm} disabled={!business && !manualName.trim()} tone="success" />
-    <PrimaryButton label="NO, BUSCAR OTRO RUC" onPress={() => navigation.goBack()} tone="outline" />
+    <PrimaryButton label="No, buscar otro RUC" onPress={() => navigation.goBack()} tone="outline" />
   </Screen>;
 }
 
@@ -136,7 +136,7 @@ export function SunatConnectionDataScreen({ navigation }: P<"SunatConnectionData
     </Card>
     <Card tone="warning"><Text style={styles.note}>Mientras se activa, FAKTU funciona en modo pruebas: puedes vender y practicar, pero esos comprobantes no tienen validez tributaria.</Text></Card>
     <Card><Text style={styles.note}>Nunca te pediremos tu Clave SOL principal, ni por teléfono, ni por WhatsApp, ni en esta app. El usuario secundario solo puede emitir comprobantes y tú lo puedes desactivar cuando quieras.</Text></Card>
-    <PrimaryButton label="ENTENDIDO, CONTINUAR" onPress={() => navigation.navigate("EnabledDocuments")} tone="success" />
+    <PrimaryButton label="Entendido, continuar" onPress={() => navigation.navigate("EnabledDocuments")} tone="success" />
   </Screen>;
 }
 
@@ -158,7 +158,7 @@ export function EnabledDocumentsScreen({ navigation }: P<"EnabledDocuments">) {
     <Card tone="success"><Text style={styles.doc}>✓ BOLETA ELECTRÓNICA</Text><Text>Para ventas al público.</Text></Card>
     <Card tone="info"><Text style={styles.doc}>✓ FACTURA ELECTRÓNICA</Text><Text>Para operaciones con RUC.</Text></Card>
     <Card><Text style={styles.note}>Estas opciones deberán actualizarse automáticamente si cambia la situación tributaria del negocio.</Text></Card>
-    <PrimaryButton label="CONTINUAR" onPress={() => navigation.navigate("Ready")} />
+    <PrimaryButton label="Continuar" onPress={() => navigation.navigate("Ready")} />
   </Screen>;
 }
 
@@ -177,14 +177,14 @@ export function ReadyScreen({ navigation }: P<"Ready">) {
   return <Screen narrow title="¡Todo listo!" subtitle="Tu negocio ya está configurado para comenzar.">
     <View style={styles.ready}><Text style={styles.check}>✓</Text></View>
     <Card tone="success"><InfoRow label="Negocio" value={profile.tradeName ?? profile.businessName ?? "Mi negocio"} /><InfoRow label="RUC" value={profile.ruc ?? "-"} /><InfoRow label="Comprobantes" value="Boleta y Factura" /><InfoRow label="Facturación" value={connectionLabel(billing)} /></Card>
-    <PrimaryButton label="HACER MI PRIMERA VENTA" onPress={finish} tone="success" />
+    <PrimaryButton label="Hacer mi primera venta" onPress={finish} tone="success" />
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: "center", paddingVertical: 24, gap: 8 }, heroIcon: { fontSize: 58, color: theme.colors.primaryText }, heroTitle: { fontSize: 22, fontWeight: "900", color: theme.colors.primaryText },
-  bullet: { color: theme.colors.text, lineHeight: 23, fontWeight: "700" }, safe: { color: theme.colors.success, fontWeight: "800" }, note: { color: theme.colors.muted, lineHeight: 20 },
-  business: { fontSize: 19, fontWeight: "900", color: theme.colors.success, textAlign: "center", marginBottom: 4 }, doc: { fontWeight: "900", color: theme.colors.text },
-  center: { flex: 1, minHeight: 340, alignItems: "center", justifyContent: "center", gap: 14 }, centerText: { color: theme.colors.muted, fontWeight: "700" },
-  ready: { alignItems: "center", padding: 10 }, check: { width: 76, height: 76, borderRadius: 38, backgroundColor: theme.colors.success, color: "white", textAlign: "center", textAlignVertical: "center", fontSize: 48, fontWeight: "900", lineHeight: 76 }
+  hero: { alignItems: "center", paddingVertical: 24, gap: 8 }, heroIcon: { fontSize: 58, color: theme.colors.primaryText }, heroTitle: { fontSize: 22, fontWeight: "700", color: theme.colors.primaryText },
+  bullet: { color: theme.colors.text, lineHeight: 23, fontWeight: "600" }, safe: { color: theme.colors.success, fontWeight: "600" }, note: { color: theme.colors.muted, lineHeight: 20 },
+  business: { fontSize: 19, fontWeight: "700", color: theme.colors.success, textAlign: "center", marginBottom: 4 }, doc: { fontWeight: "700", color: theme.colors.text },
+  center: { flex: 1, minHeight: 340, alignItems: "center", justifyContent: "center", gap: 14 }, centerText: { color: theme.colors.muted, fontWeight: "600" },
+  ready: { alignItems: "center", padding: 10 }, check: { width: 76, height: 76, borderRadius: 38, backgroundColor: theme.colors.success, color: "white", textAlign: "center", textAlignVertical: "center", fontSize: 48, fontWeight: "700", lineHeight: 76 }
 });

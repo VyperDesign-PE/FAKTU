@@ -103,8 +103,8 @@ function DebtorCard({ debtor, business, onPaid }: { debtor: Debtor; business: st
         <Text style={[styles.balance, debtor.oldest > 30 && { color: theme.colors.danger }]}>{money(debtor.balance)}</Text>
       </View>
       <View style={styles.actions}>
-        <View style={{ flex: 1 }}><PrimaryButton label="REGISTRAR PAGO" onPress={() => setOpen((v) => !v)} tone="success" /></View>
-        <View style={{ flex: 1 }}><PrimaryButton label="RECORDAR WHATSAPP" onPress={() => void Linking.openURL(reminderUrl(debtor, business))} tone="outline" /></View>
+        <View style={{ flex: 1 }}><PrimaryButton label="Registrar pago" onPress={() => setOpen((v) => !v)} tone="success" /></View>
+        <View style={{ flex: 1 }}><PrimaryButton label="Recordar WhatsApp" onPress={() => void Linking.openURL(reminderUrl(debtor, business))} tone="outline" /></View>
       </View>
       {!debtor.phone ? <Text style={styles.sub}>Sin celular registrado: WhatsApp te dejará elegir el contacto.</Text> : null}
       {open ? (
@@ -125,19 +125,19 @@ function DebtorCard({ debtor, business, onPaid }: { debtor: Debtor; business: st
 }
 
 const styles = StyleSheet.create({
-  warn: { color: theme.colors.warning, fontWeight: "800" },
-  ok: { color: theme.colors.success, fontWeight: "800" },
+  warn: { color: theme.colors.warning, fontWeight: "600" },
+  ok: { color: theme.colors.success, fontWeight: "600" },
   summary: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  sumCard: { flexGrow: 1, flexBasis: 0, minWidth: 150, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16 },
-  sumLabel: { color: theme.colors.muted, fontWeight: "800" },
-  sumValue: { color: theme.colors.text, fontWeight: "900", fontSize: 26, marginTop: 6 },
-  card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16, gap: 12 },
+  sumCard: { flexGrow: 1, flexBasis: 0, minWidth: 150, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16 },
+  sumLabel: { color: theme.colors.muted, fontWeight: "600" },
+  sumValue: { color: theme.colors.text, fontWeight: "700", fontSize: 26, marginTop: 6 },
+  card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16, gap: 12 },
   head: { flexDirection: "row", alignItems: "center", gap: 10 },
-  name: { color: theme.colors.text, fontWeight: "900", fontSize: 17 },
+  name: { color: theme.colors.text, fontWeight: "700", fontSize: 17 },
   sub: { color: theme.colors.muted, fontSize: 12.5, lineHeight: 18 },
-  balance: { color: theme.colors.text, fontWeight: "900", fontSize: 22 },
+  balance: { color: theme.colors.text, fontWeight: "700", fontSize: 22 },
   actions: { flexDirection: "row", gap: 10 },
-  pay: { gap: 10, backgroundColor: theme.colors.hover, borderRadius: 14, padding: 12 },
+  pay: { gap: 10, backgroundColor: theme.colors.hover, borderRadius: 10, padding: 12 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   sale: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
   saleText: { color: theme.colors.muted, fontSize: 13 }

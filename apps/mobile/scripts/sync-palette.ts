@@ -13,8 +13,6 @@ export function renderPaletteCss() {
   return [
     "/* palette:start (generado desde src/brand/palette.ts; no editar a mano) */",
     "      :root {", vars(light, "        "), "        color-scheme: light;", "      }",
-    "      @media (prefers-color-scheme: dark) {",
-    '        :root:not([data-theme="light"]) {', vars(dark, "          "), "          color-scheme: dark;", "        }", "      }",
     '      :root[data-theme="dark"] {', vars(dark, "        "), "        color-scheme: dark;", "      }",
     "      /* palette:end */"
   ].join("\n");

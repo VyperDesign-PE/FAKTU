@@ -1,6 +1,6 @@
 # Marca FAKTU — guía de lo implementado
 
-Estado: ruta **C "FAKTU Ágil"** aplicada en el cliente real (`apps/mobile`). Lo marcado como *propuesta* no está implementado.
+Estado: ruta **C "FAKTU Ágil"** aplicada en el cliente real (`apps/mobile`) y refinada hacia un acabado de panel de gestión sobrio (ver "Acabado de la interfaz"). Lo marcado como *propuesta* no está implementado.
 
 ## Posicionamiento (propuesta, sin validar con usuarios)
 FAKTU ayuda a bodegas, librerías y restaurantes de menú a vender y emitir boletas y facturas desde el celular o la computadora. Promesas verificables hoy: venta rápida, historial, fiados, cierre de caja, modo práctica. **No se promete** "aprobado por SUNAT", "sin errores" ni "todo funciona sin internet": la emisión real contra SUNAT nunca se probó (ver `docs/PILOTO.md`).
@@ -31,15 +31,25 @@ Fuente única: `apps/mobile/src/brand/palette.ts`. `theme.ts` la usa en nativo; 
 
 | Rol | Claro | Oscuro | Nota |
 |---|---|---|---|
-| Fondo / superficie | `#F5F7FC` / `#FFFFFF` | `#0A1127` / `#121B38` | |
-| Texto / secundario | `#16203F` / `#55607F` | `#EDF0FB` / `#A3ACCF` | secundario ≥ 4,5 |
-| Primario (relleno de botón, texto blanco encima) | `#2547A8` | `#4568E0` | |
-| `primaryText` (enlaces y texto de marca) | `#2547A8` | `#8FA8FF` | token nuevo: en oscuro el mismo color no sirve de fondo y de texto |
-| Fondo oscuro de marca (`ink`) y su texto | `#101A3D`; `onInkMuted` `#C5CEF0` | `#0D1531` | menú, tarjeta destacada |
-| Acento menta | `#19C58B` | igual | **decorativo**: nunca significa un estado |
-| Éxito / advertencia / error | `#0F7A3E` / `#8A5300` / `#B42318` | `#4CD98F` / `#F5B544` / `#FF8A80` | siempre con texto o icono |
+| Fondo / superficie | `#F3F5F8` / `#FFFFFF` | `#0C1320` / `#131C2E` | |
+| Texto / secundario | `#1A2332` / `#586374` | `#E6EAF2` / `#9AA6BA` | secundario ≥ 4,5 |
+| Primario (relleno de botón, texto blanco encima) | `#1F4B99` | `#3A66BE` | |
+| `primaryText` (enlaces y texto de marca) | `#1F4B99` | `#8FB0EA` | en oscuro el mismo color no sirve de fondo y de texto |
+| Fondo oscuro de marca (`ink`, menú lateral) y su texto | `#0F1B33`; `onInkMuted` `#B9C4D9` | `#0A101D` | |
+| Acento menta | `#19C58B` | igual | **solo el punto del isotipo**: ya no se usa en la interfaz ni significa un estado |
+| Éxito / advertencia / error | `#17703F` / `#8A5300` / `#B42318` | `#4CC38A` / `#F0B24A` / `#F2877E` | siempre con texto o icono |
 
 Cambio de contraste confirmado: en la paleta anterior el texto de éxito (3,36) y de advertencia (3,96) sobre el fondo no llegaba a AA 4,5; ahora sí.
+
+## Acabado de la interfaz (rediseño profesional)
+Referencia pedida: panel de gestión con barra lateral oscura e iconos, contenido claro con tarjetas blancas, barra superior con "Volver" y perfil.
+- **Claro por defecto** en la web; el oscuro solo si la persona lo elige (antes seguía el modo del sistema).
+- **Menú lateral** azul marino con iconos de línea (`components/Icon.tsx`, SVG en web), secciones Principal y Gestión; el ítem activo se resalta con el color de marca. Se usa en todas las pantallas una vez completado el alta (`DesktopFrame`), también en las secundarias (Clientes, Guías, Seguridad…).
+- **Barra superior** (escritorio): botón Volver, estado de conexión, interruptor de tema y negocio con su RUC. En el celular, barra oscura con Volver y navegación inferior con iconos.
+- **Tarjetas** blancas con borde suave y sombra leve (`Panel`, `Card`, `KpiCard`), cabecera con título y línea divisoria; **tablas** con encabezado y etiquetas de estado (`Badge`).
+- **Tipografía**: pesos 600–700 (antes 800–900), importes con cifras tabulares; botones en formato oración (antes MAYÚSCULAS, ver `domain/text.ts`).
+- **Esquinas**: 10 px en botones y campos, 12 px en tarjetas. Sin emojis ni verde en la interfaz: el verde solo indica estados.
+- **Navegación web**: cada pantalla principal tiene URL (`/resumen`, `/vender`, `/historial`…), así "atrás" del navegador funciona. Solo se activa con sesión y alta completa.
 
 ## Tipografía y espaciado
 Se mantiene la fuente del sistema (sin fuentes remotas). Pesos: 900 para títulos e importes, 800 para etiquetas. Importes con prefijo `S/`. **Pendiente**: escala tipográfica formal y cifras tabulares (no se midió el soporte en las fuentes de sistema de cada plataforma).

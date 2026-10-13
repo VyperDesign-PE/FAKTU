@@ -18,7 +18,7 @@ type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStack
 export function CatalogScreen({ navigation }: P<"Catalog">) {
   const { catalog, addItem } = useApp();
   return <Screen title="Mi catálogo" subtitle="Productos y servicios que puedes reutilizar en tus ventas.">
-    <PrimaryButton label="+ AGREGAR PRODUCTO / SERVICIO" onPress={() => navigation.navigate("AddProduct")} />
+    <PrimaryButton label="+ Agregar producto / servicio" onPress={() => navigation.navigate("AddProduct")} />
     <View style={styles.grid}>{catalog.map((p) => <Pressable key={p.id} style={styles.product} onPress={() => { addItem(p); navigation.navigate("Cart"); }}><Text style={styles.productName}>{p.name}</Text><Text style={styles.price}>S/ {p.unitPrice.toFixed(2)}</Text><Text style={styles.tap}>Toca para agregar a una venta</Text></Pressable>)}</View>
   </Screen>;
 }
@@ -115,13 +115,13 @@ export function ReceiptList({ onOpen }: { onOpen: (clientTransactionId: string) 
 
 function StatePill({ tone, text }: { tone: Row["tone"]; text: string }) {
   const palette = { ok: [theme.colors.successSoft, theme.colors.success], warn: [theme.colors.warningSoft, theme.colors.warning], bad: [theme.colors.dangerSoft, theme.colors.danger], muted: [theme.colors.mutedSoft, theme.colors.muted] }[tone];
-  return <View style={{ backgroundColor: palette[0], paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 }}><Text style={{ color: palette[1], fontWeight: "800", fontSize: 11.5 }}>{text}</Text></View>;
+  return <View style={{ backgroundColor: palette[0], paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 }}><Text style={{ color: palette[1], fontWeight: "600", fontSize: 11.5 }}>{text}</Text></View>;
 }
 
 export function ReceiptHistoryScreen({ navigation }: P<"ReceiptHistory">) {
   return <Screen title="Comprobantes" subtitle="Historial del negocio y ventas pendientes del dispositivo.">
     <ReceiptList onOpen={(clientTransactionId) => navigation.navigate("ReceiptDetail", { clientTransactionId })} />
-    <PrimaryButton label="VER PENDIENTES" onPress={() => navigation.navigate("PendingReceipts")} tone="outline" />
+    <PrimaryButton label="Ver pendientes" onPress={() => navigation.navigate("PendingReceipts")} tone="outline" />
   </Screen>;
 }
 
@@ -160,7 +160,7 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
       <SectionTitle>Detalle</SectionTitle>
       <Card>{localReceipt.items.map((item) => <InfoRow key={item.id} label={`${item.name} × ${item.quantity}`} value={`S/ ${(item.quantity * item.unitPrice).toFixed(2)}`} />)}</Card>
       {localReceipt.errorMessage ? <Card tone="danger"><Text style={styles.error}>{localReceipt.errorMessage}</Text></Card> : null}
-      <PrimaryButton label="COMPARTIR" onPress={() => navigation.navigate("ShareReceipt", { clientTransactionId: route.params.clientTransactionId })} tone="outline" />
+      <PrimaryButton label="Compartir" onPress={() => navigation.navigate("ShareReceipt", { clientTransactionId: route.params.clientTransactionId })} tone="outline" />
     </Screen>;
   }
 
@@ -182,9 +182,9 @@ export function ReceiptDetailScreen({ navigation, route }: P<"ReceiptDetail">) {
     {remoteReceipt.creditNote ? <Card tone={remoteReceipt.voided ? "danger" : "warning"}><InfoRow label="Nota de crédito" value={remoteReceipt.creditNote.officialNumber ?? "En proceso"} /><InfoRow label="Estado" value={friendlyRemoteStatus(remoteReceipt.creditNote.status)} /></Card> : null}
     {(remoteReceipt.documentType === "NOTA_CREDITO" || remoteReceipt.documentType === "NOTA_DEBITO") && remoteReceipt.noteDescription ? <Card><InfoRow label="Motivo" value={remoteReceipt.noteDescription} /></Card> : null}
     {actionMessage ? <Card tone="info"><Text style={styles.body}>{actionMessage}</Text></Card> : null}
-    <PrimaryButton label="COMPARTIR" onPress={() => navigation.navigate("ShareReceipt", { clientTransactionId: route.params.clientTransactionId })} tone="outline" />
+    <PrimaryButton label="Compartir" onPress={() => navigation.navigate("ShareReceipt", { clientTransactionId: route.params.clientTransactionId })} tone="outline" />
     {remoteReceipt.status === "ACCEPTED" && !remoteReceipt.voided && (remoteReceipt.documentType === "BOLETA" || remoteReceipt.documentType === "FACTURA")
-      ? <PrimaryButton label="CREAR GUÍA DE REMISIÓN" onPress={() => navigation.navigate("GuideForm", { receiptClientTransactionId: route.params.clientTransactionId })} tone="outline" />
+      ? <PrimaryButton label="Crear guía de remisión" onPress={() => navigation.navigate("GuideForm", { receiptClientTransactionId: route.params.clientTransactionId })} tone="outline" />
       : null}
     <ReceiptActions receipt={remoteReceipt} online={online} onChanged={afterAction} />
   </Screen>;
@@ -294,9 +294,9 @@ export function BillingSettingsScreen({ navigation }: P<"BillingSettings">) {
     </Card>
 
     {message ? <Card tone={message.toLowerCase().includes("no pudimos") || message.toLowerCase().includes("falta") ? "danger" : "info"}><Text style={styles.body}>{message}</Text></Card> : null}
-    <PrimaryButton label={saving ? "GUARDANDO..." : "GUARDAR CONFIGURACION"} onPress={save} disabled={saving || testing} />
-    <PrimaryButton label={testing ? "PROBANDO CONEXION..." : "PROBAR CONEXION"} onPress={testConnection} disabled={saving || testing} tone="outline" />
-    <PrimaryButton label="VER ESTADO DEL SISTEMA" onPress={() => navigation.navigate("SystemStatus")} tone="outline" />
+    <PrimaryButton label={saving ? "GUARDANDO..." : "GUARDAR CONFIGURACIÓN"} onPress={save} disabled={saving || testing} />
+    <PrimaryButton label={testing ? "PROBANDO CONEXIÓN..." : "PROBAR CONEXIÓN"} onPress={testConnection} disabled={saving || testing} tone="outline" />
+    <PrimaryButton label="Ver estado del sistema" onPress={() => navigation.navigate("SystemStatus")} tone="outline" />
   </Screen>;
 }
 
@@ -321,8 +321,8 @@ export function SystemStatusScreen({ navigation }: P<"SystemStatus">) {
       {rucRegistry?.sourceUpdatedAt ? <InfoRow label="Actualizado" value={rucRegistry.sourceUpdatedAt} /> : null}
       {rucRegistry?.lastRun?.status === "FAILED" ? <Text style={styles.body}>La última actualización tuvo un problema. Seguimos usando el último padrón válido.</Text> : null}
     </Card> : null}
-    {pendingCount ? <PrimaryButton label="VER PENDIENTES" onPress={() => navigation.navigate("PendingReceipts")} /> : null}
-    <PrimaryButton label="AYUDA" onPress={() => navigation.navigate("Support")} tone="outline" />
+    {pendingCount ? <PrimaryButton label="Ver pendientes" onPress={() => navigation.navigate("PendingReceipts")} /> : null}
+    <PrimaryButton label="Ayuda" onPress={() => navigation.navigate("Support")} tone="outline" />
   </Screen>;
 }
 
@@ -336,9 +336,9 @@ export function BusinessScreen({ navigation }: P<"Business">) {
   return <Screen title="Mi negocio" subtitle="Datos principales y accesos de configuración.">
     <Card tone="success"><InfoRow label="Cuenta" value={user?.email ?? "-"} /><InfoRow label="Negocio" value={profile.tradeName ?? profile.businessName ?? "-"} /><InfoRow label="RUC" value={profile.ruc ?? "-"} /><InfoRow label="Estado" value={profile.taxpayerStatus ?? "-"} /><InfoRow label="Dirección" value={profile.address ?? "-"} /><InfoRow label="Usuario SOL" value={profile.sunatUser ?? "No registrado"} /></Card>
     <Card tone="info"><Text style={styles.body}>La Clave SOL no se muestra ni se almacena. Si la autorización real expira, la app debe guiar al usuario para renovarla mediante SUNAT/PSE.</Text></Card>
-    <PrimaryButton label="ESTADO DEL SISTEMA" onPress={() => navigation.navigate("SystemStatus")} />
-    <PrimaryButton label="AYUDA / SOPORTE" onPress={() => navigation.navigate("Support")} tone="outline" />
-    <PrimaryButton label="CERRAR SESIÓN" onPress={logout} tone="outline" />
+    <PrimaryButton label="Estado del sistema" onPress={() => navigation.navigate("SystemStatus")} />
+    <PrimaryButton label="Ayuda / soporte" onPress={() => navigation.navigate("Support")} tone="outline" />
+    <PrimaryButton label="Cerrar sesión" onPress={logout} tone="outline" />
   </Screen>;
 }
 
@@ -347,8 +347,8 @@ export function SupportScreen({ navigation }: P<"Support">) {
     <Card><Text style={styles.supportTitle}>¿No puedes emitir?</Text><Text style={styles.body}>Revisa el Estado del sistema. Si no hay Internet, puedes seguir vendiendo. Si hay una observación, el comprobante queda guardado para corregirlo.</Text></Card>
     <Card><Text style={styles.supportTitle}>¿Olvidaste tu Clave SOL?</Text><Text style={styles.body}>La recuperación debe hacerse desde los canales oficiales de SUNAT. La aplicación nunca debe conocer ni guardar una contraseña recuperada fuera del flujo de autorización.</Text></Card>
     <Card tone="success"><Text style={styles.supportTitle}>Soporte humano</Text><Text style={styles.body}>En producción agregaremos WhatsApp/chat de soporte con el contexto del error, sin exponer credenciales.</Text></Card>
-    <PrimaryButton label="VOLVER AL ESTADO DEL SISTEMA" onPress={() => navigation.navigate("SystemStatus")} />
-    <PrimaryButton label="IR AL INICIO" onPress={() => navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] })} tone="outline" />
+    <PrimaryButton label="Volver al estado del sistema" onPress={() => navigation.navigate("SystemStatus")} />
+    <PrimaryButton label="Ir al inicio" onPress={() => navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] })} tone="outline" />
   </Screen>;
 }
 
@@ -357,15 +357,15 @@ const friendlyRemoteStatus = (status: Parameters<typeof remoteStatusInfo>[0]) =>
 
 const styles = StyleSheet.create({
   listToolbar: { gap: 10 },
-  listSearch: { minHeight: 46, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
+  listSearch: { minHeight: 46, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
   filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  table: { backgroundColor: theme.colors.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
+  table: { backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
   tr: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
   th: { minHeight: 42, backgroundColor: theme.colors.tableHead },
-  thText: { color: theme.colors.muted, fontWeight: "800", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 },
+  thText: { color: theme.colors.muted, fontWeight: "600", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 },
   td: { color: theme.colors.text },
-  tdStrong: { color: theme.colors.text, fontWeight: "800" },
+  tdStrong: { color: theme.colors.text, fontWeight: "600" },
   tdMuted: { color: theme.colors.muted, fontSize: 12.5, fontWeight: "500" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: theme.colors.surface, borderRadius: 15, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "900", color: theme.colors.text }, price: { fontWeight: "900", color: theme.colors.primaryText, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
-  statusTitle: { color: theme.colors.text, fontSize: 19, fontWeight: "900", textAlign: "center" }, body: { color: theme.colors.muted, lineHeight: 20 }, error: { color: theme.colors.danger, fontWeight: "700" }, supportTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 }, chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, product: { width: "48%", minHeight: 120, padding: 14, backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }, productName: { fontWeight: "700", color: theme.colors.text }, price: { fontWeight: "700", color: theme.colors.primaryText, marginTop: 8 }, tap: { color: theme.colors.muted, fontSize: 11, marginTop: 12 }, center: { textAlign: "center", color: theme.colors.muted },
+  statusTitle: { color: theme.colors.text, fontSize: 19, fontWeight: "700", textAlign: "center" }, body: { color: theme.colors.muted, lineHeight: 20 }, error: { color: theme.colors.danger, fontWeight: "600" }, supportTitle: { color: theme.colors.text, fontWeight: "700", fontSize: 16 }, chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
 });

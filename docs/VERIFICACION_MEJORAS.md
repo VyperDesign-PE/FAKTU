@@ -49,3 +49,14 @@ Las cifras del panel principal (servidor) no se revisaron. El resto está en la 
 
 ## Nota sobre `test:integration`
 La suite deja comprobantes pendientes en la base. Si se repite sobre una base usada y pasan más de 30 s entre corridas, el caso "el proceso del servidor recupera comprobantes pendientes" puede fallar (recoge filas viejas de otras corridas). Se observó dos veces sobre una base reutilizada; con bases nuevas pasó 6 de 6 y el CI crea una base nueva en cada ejecución. Recrea `faktu_test` antes de repetir la suite.
+
+## Rediseño profesional (verificación)
+| Comprobación | Resultado |
+|---|---|
+| `npm test` (móvil: dominio 9, navegación + 15 URLs, paleta 44 contrastes, cola 3) | Pasa |
+| `build:web` y typecheck | Pasan |
+| Navegador (Chrome, 1440 px): `/resumen` → `/vender` → `/historial` y "atrás" dos veces | Vuelve a `/vender` y luego a `/resumen` |
+| Botón Volver y menú lateral en pantallas secundarias (Clientes) | Presentes; URL `/clientes` |
+| Controles menores de 40 px en el panel (1440 px) | Ninguno |
+| Modo oscuro | Revisado en el panel; el resto de pantallas hereda los tokens, sin recorrer una por una |
+No revisado: Android/iOS (los iconos SVG solo existen en web; en nativo se muestran símbolos de texto), lector de pantalla y las pantallas de onboarding, guías, productos y por cobrar con el marco nuevo.

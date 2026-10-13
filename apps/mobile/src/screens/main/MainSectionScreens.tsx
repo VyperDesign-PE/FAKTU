@@ -3,23 +3,40 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { ResponsiveShell } from "../../components/ResponsiveShell";
-import { Card, PrimaryButton, SectionTitle } from "../../components/Ui";
+import { Badge, Card, Panel, PrimaryButton, SectionTitle } from "../../components/Ui";
+import { Icon, type IconName } from "../../components/Icon";
 import { SystemStatusBanner } from "../../components/SystemStatusBanner";
 import { useApp } from "../../context/AppContext";
 import { ReceiptList } from "../management/ManagementScreens";
 import { getBillingSettings, getDailyClose, getInsights, type BillingSettings, type DailyClose, type Insights } from "../../services/api";
-import { theme } from "../../theme";
+import { cardShadow, theme } from "../../theme";
 import { attentionCount, awaitingSendCount, effectiveSales } from "../../domain/receiptMetrics";
 
 type Props<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
 const money = (value: number) => `S/ ${value.toFixed(2)}`;
-const DAY_LETTERS = ["D", "L", "M", "M", "J", "V", "S"];
+const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 function deltaText(today: number, before: number) {
   if (before <= 0) return today > 0 ? "Primer día con ventas para comparar" : "Aún sin ventas";
   const pct = Math.round(((today - before) / before) * 100);
-  return pct === 0 ? "Igual que ayer" : `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}% vs ayer`;
+  return pct === 0 ? "Igual que ayer" : `${Math.abs(pct)}% ${pct > 0 ? "más" : "menos"} que ayer`;
+}
+
+function KpiCard({ label, value, helper, icon, onPress, tone = "default" }: { label: string; value: string; helper: string; icon: IconName; onPress?: () => void; tone?: "default" | "warning" }) {
+  const body = (
+    <View style={[styles.kpi, cardShadow, tone === "warning" && styles.kpiWarning]}>
+      <View style={styles.kpiTop}>
+        <Text style={styles.kpiLabel}>{label}</Text>
+        <View style={[styles.kpiIcon, tone === "warning" && { backgroundColor: theme.colors.warningSoft }]}>
+          <Icon name={icon} size={18} color={tone === "warning" ? theme.colors.warning : theme.colors.primaryText} />
+        </View>
+      </View>
+      <Text style={styles.kpiValue}>{value}</Text>
+      <Text style={styles.kpiHelper} numberOfLines={2}>{helper}</Text>
+    </View>
+  );
+  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${value}`} onPress={onPress} style={styles.kpiWrap}>{body}</Pressable> : <View style={styles.kpiWrap}>{body}</View>;
 }
 
 export function DashboardScreen({ navigation }: Props<"Dashboard">) {
@@ -28,7 +45,7 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
   const [insights, setInsights] = useState<Insights>();
   const [billing, setBilling] = useState<BillingSettings>();
   useEffect(() => { if (online) getBillingSettings().then(setBilling).catch(() => undefined); }, [online]);
-  const testMode = billing?.providerCode === "mock" || (billing ? !billing.credentialConfigured : false);
+  const practiceMode = billing?.providerCode === "mock" || (billing ? !billing.credentialConfigured : false);
   const business = profile.tradeName ?? profile.businessName ?? "tu negocio";
 
   // Métricas reales desde el servidor (todas las cajas del negocio).
@@ -40,6 +57,8 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
 
   const todayTotal = insights?.today.total ?? today?.netTotal;
   const maxBar = Math.max(1, ...(insights?.week.series.map((day) => day.total) ?? [1]));
+  const placeholder = online ? "…" : "—";
+  const dateLabel = new Date().toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" });
 
   function startSale() {
     resetDraft();
@@ -49,7 +68,7 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
   function shareSummary() {
     if (!insights) return;
     const lines = [
-      `📊 Resumen de ${business} — ${insights.date}`,
+      `Resumen de ${business} — ${insights.date}`,
       `Ventas de hoy: ${money(insights.today.total)} (${insights.today.count} comprobantes)`,
       deltaText(insights.today.total, insights.yesterday),
       ...(insights.receivables.total > 0 ? [`Por cobrar (fiados): ${money(insights.receivables.total)} de ${insights.receivables.customers} cliente(s)`] : []),
@@ -63,67 +82,86 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
     <ResponsiveShell
       currentRoute="Dashboard"
       navigation={navigation}
-      title={`Hola, ${business}`}
-      subtitle="Así va tu negocio hoy."
-      action={<View style={{ width: 170 }}><PrimaryButton label="＋ NUEVA VENTA" onPress={startSale} tone="success" /></View>}
+      title="Resumen"
+      subtitle={`${business} · ${dateLabel}`}
+      action={<Pressable accessibilityRole="button" onPress={startSale} style={styles.cta}><Icon name="plus" size={18} color="#FFFFFF" /><Text style={styles.ctaText}>Nueva venta</Text></Pressable>}
     >
       <SystemStatusBanner online={online} pendingCount={pendingCount} onPress={() => navigation.navigate("SystemStatus")} />
-      {testMode ? <Card tone="warning"><Text style={styles.copy}><Text style={styles.cardTitle}>Modo pruebas. </Text>Tus comprobantes todavía no tienen validez ante SUNAT. Te avisaremos cuando tu facturación electrónica esté activa.</Text></Card> : null}
-
-      <View style={styles.heroRow}>
-        <View style={styles.hero}>
-          <Text style={styles.heroLabel}>Ventas de hoy</Text>
-          <Text style={styles.heroValue}>{todayTotal !== undefined ? money(todayTotal) : online ? "…" : "—"}</Text>
-          <Text style={styles.heroSub}>{insights ? `${insights.today.count} ${insights.today.count === 1 ? "venta" : "ventas"} · ${deltaText(insights.today.total, insights.yesterday)}` : online ? "Cargando…" : "Sin Internet"}</Text>
-          {insights ? (
-            <View style={styles.bars}>
-              {insights.week.series.map((day) => {
-                const isToday = day.date === insights.date;
-                const dow = new Date(`${day.date}T12:00:00Z`).getUTCDay();
-                return (
-                  <View key={day.date} style={styles.barCol}>
-                    <View style={styles.barTrack}><View style={[styles.bar, isToday && styles.barToday, { height: `${Math.max(4, (day.total / maxBar) * 100)}%` }]} /></View>
-                    <Text style={[styles.barLabel, isToday && { color: "#FFFFFF" }]}>{DAY_LETTERS[dow]}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
-          {insights ? <Text style={styles.heroSub}>Últimos 7 días: {money(insights.week.total)}</Text> : null}
+      {practiceMode ? (
+        <View style={styles.notice} accessibilityRole="alert">
+          <Icon name="alert" size={20} color={theme.colors.warning} />
+          <Text style={styles.noticeText}><Text style={styles.noticeTitle}>Modo práctica. </Text>Los comprobantes que emitas ahora son de prueba y no tienen validez ante SUNAT. Te avisaremos cuando tu facturación electrónica esté activa.</Text>
         </View>
+      ) : null}
 
-        <View style={styles.sideCards}>
-          <Pressable accessibilityRole="button" onPress={() => navigation.navigate("PorCobrar")} style={styles.miniCard}>
-            <Text style={styles.metricLabel}>Por cobrar (fiados)</Text>
-            <Text style={styles.metricValue}>{insights ? money(insights.receivables.total) : "—"}</Text>
-            <Text style={styles.metricHelper}>{insights?.receivables.customers ? `${insights.receivables.customers} cliente(s) · más antigua ${insights.receivables.oldestDays} d` : "Nadie te debe"}</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Productos")} style={[styles.miniCard, insights?.lowStock.length ? styles.miniWarn : undefined]}>
-            <Text style={styles.metricLabel}>Stock bajo</Text>
-            <Text style={styles.metricValue}>{insights ? String(insights.lowStock.length) : "—"}</Text>
-            <Text style={styles.metricHelper} numberOfLines={2}>{insights?.lowStock.length ? insights.lowStock.slice(0, 3).map((p) => `${p.name} (${p.stockQty})`).join(" · ") : "Todo con stock suficiente"}</Text>
-          </Pressable>
-        </View>
+      <View style={styles.kpiRow}>
+        <KpiCard label="Ventas de hoy" icon="trend" value={todayTotal !== undefined ? money(todayTotal) : placeholder} helper={insights ? `${insights.today.count} ${insights.today.count === 1 ? "venta" : "ventas"} · ${deltaText(insights.today.total, insights.yesterday)}` : online ? "Cargando…" : "Sin Internet"} />
+        <KpiCard label="Últimos 7 días" icon="receipt" value={insights ? money(insights.week.total) : placeholder} helper={insights ? `${insights.week.series.reduce((sum, day) => sum + day.count, 0)} comprobantes` : " "} />
+        <KpiCard label="Por cobrar (fiados)" icon="wallet" onPress={() => navigation.navigate("PorCobrar")} value={insights ? money(insights.receivables.total) : placeholder} helper={insights?.receivables.customers ? `${insights.receivables.customers} cliente(s) · la más antigua, ${insights.receivables.oldestDays} d` : "Nadie te debe"} />
+        <KpiCard label="Stock bajo" icon="box" tone={insights?.lowStock.length ? "warning" : "default"} onPress={() => navigation.navigate("Productos")} value={insights ? String(insights.lowStock.length) : placeholder} helper={insights?.lowStock.length ? insights.lowStock.slice(0, 3).map((p) => `${p.name} (${p.stockQty})`).join(" · ") : "Todo con stock suficiente"} />
       </View>
 
       <View style={styles.twoColumns}>
-        <View style={styles.placeholderCard}>
-          <Text style={styles.cardTitle}>Lo que más vendes (30 días)</Text>
-          {insights?.topProducts.length ? insights.topProducts.map((p, index) => (
-            <View key={p.name} style={styles.topRow}><Text style={styles.topRank}>{index + 1}</Text><Text style={[styles.copy, { flex: 1 }]} numberOfLines={1}>{p.name}</Text><Text style={styles.topValue}>{money(p.revenue)}</Text></View>
-          )) : <Text style={styles.copy}>Aún no hay ventas suficientes para mostrar.</Text>}
-          {insights?.peakHour !== null && insights?.peakHour !== undefined ? <Text style={styles.metricHelper}>Tu hora más fuerte: {insights.peakHour}:00 – {insights.peakHour + 1}:00</Text> : null}
+        <View style={styles.column}>
+          <Panel title="Ventas de los últimos 7 días">
+            {insights ? (
+              <>
+                <View style={styles.bars}>
+                  {insights.week.series.map((day) => {
+                    const isToday = day.date === insights.date;
+                    const dow = new Date(`${day.date}T12:00:00Z`).getUTCDay();
+                    return (
+                      <View key={day.date} style={styles.barCol} accessible accessibilityLabel={`${WEEKDAYS[dow]}: ${money(day.total)}`}>
+                        <Text style={styles.barValue}>{day.total > 0 ? Math.round(day.total) : ""}</Text>
+                        <View style={styles.barTrack}><View style={[styles.bar, isToday && styles.barToday, { height: `${Math.max(3, (day.total / maxBar) * 100)}%` }]} /></View>
+                        <Text style={[styles.barLabel, isToday && { color: theme.colors.primaryText, fontWeight: "700" }]}>{WEEKDAYS[dow]}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={styles.muted}>Importes en soles. El día de hoy aparece resaltado.</Text>
+              </>
+            ) : <Text style={styles.muted}>{online ? "Cargando…" : "Sin Internet: conéctate para ver las ventas de la semana."}</Text>}
+          </Panel>
         </View>
-        <View style={styles.placeholderCard}>
-          <Text style={styles.cardTitle}>Atajos</Text>
-          <Pressable accessibilityRole="button" onPress={shareSummary} disabled={!insights} style={styles.shortcut}><Text style={styles.shortcutText}>Compartir resumen del día por WhatsApp</Text><Text style={styles.chevron}>›</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => navigation.navigate("CashClose")} style={styles.shortcut}><Text style={styles.shortcutText}>Cierre de caja{today ? ` · efectivo esperado ${money(today.expectedCash)}` : ""}</Text><Text style={styles.chevron}>›</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Guides")} style={styles.shortcut}><Text style={styles.shortcutText}>Guías de remisión</Text><Text style={styles.chevron}>›</Text></Pressable>
-          {today?.pending.count ? <Text style={styles.bullet}>• {today.pending.count} comprobante(s) esperando confirmación de SUNAT</Text> : null}
-          {today?.rejected.count ? <Text style={[styles.bullet, { color: theme.colors.danger }]}>• {today.rejected.count} comprobante(s) rechazado(s): revísalos</Text> : null}
+
+        <View style={styles.column}>
+          <Panel title="Lo que más vendes (30 días)" flush>
+            {insights?.topProducts.length ? (
+              <View>
+                <View style={[styles.tableRow, styles.tableHead]}><Text style={[styles.th, { width: 28 }]}>#</Text><Text style={[styles.th, { flex: 1 }]}>Producto</Text><Text style={[styles.th, { textAlign: "right" }]}>Importe</Text></View>
+                {insights.topProducts.map((p, index) => (
+                  <View key={p.name} style={styles.tableRow}><Text style={[styles.td, { width: 28, color: theme.colors.muted }]}>{index + 1}</Text><Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>{p.name}</Text><Text style={[styles.td, styles.amount]}>{money(p.revenue)}</Text></View>
+                ))}
+              </View>
+            ) : <View style={{ padding: 18 }}><Text style={styles.muted}>Aún no hay ventas suficientes para mostrar.</Text></View>}
+            {insights?.peakHour !== null && insights?.peakHour !== undefined ? <View style={styles.tableFoot}><Text style={styles.muted}>Tu hora más fuerte: {insights.peakHour}:00 – {insights.peakHour + 1}:00</Text></View> : null}
+          </Panel>
         </View>
       </View>
+
+      <Panel title="Accesos rápidos" flush>
+        <ShortcutRow icon="wallet" title="Cierre de caja" detail={today ? `Efectivo esperado ${money(today.expectedCash)}` : "Ventas del día por medio de pago"} onPress={() => navigation.navigate("CashClose")} />
+        <ShortcutRow icon="truck" title="Guías de remisión" detail="Traslado de mercadería" onPress={() => navigation.navigate("Guides")} />
+        <ShortcutRow icon="file" title="Compartir resumen del día por WhatsApp" detail={insights ? "Abre WhatsApp con el resumen listo" : "Disponible cuando cargue el resumen"} onPress={shareSummary} disabled={!insights} last />
+        {today?.pending.count || today?.rejected.count ? (
+          <View style={styles.tableFoot}>
+            {today?.pending.count ? <Badge tone="warning" label={`${today.pending.count} esperando confirmación de SUNAT`} /> : null}
+            {today?.rejected.count ? <Badge tone="danger" label={`${today.rejected.count} rechazado(s): revísalos`} /> : null}
+          </View>
+        ) : null}
+      </Panel>
     </ResponsiveShell>
+  );
+}
+
+function ShortcutRow({ icon, title, detail, onPress, disabled, last }: { icon: IconName; title: string; detail: string; onPress: () => void; disabled?: boolean; last?: boolean }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.shortcut, !last && styles.shortcutDivider, hovered && { backgroundColor: theme.colors.hover }, disabled && { opacity: 0.5 }]}>
+      <View style={styles.kpiIcon}><Icon name={icon} size={18} color={theme.colors.primaryText} /></View>
+      <View style={{ flex: 1 }}><Text style={styles.shortcutTitle}>{title}</Text><Text style={styles.muted}>{detail}</Text></View>
+      <Icon name="chevron" size={18} color={theme.colors.muted} />
+    </Pressable>
   );
 }
 
@@ -206,35 +244,48 @@ function ConfigLink({ title, detail, onPress }: { title: string; detail: string;
 }
 
 const styles = StyleSheet.create({
-  heroRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  hero: { flexGrow: 2, flexBasis: 340, minWidth: 280, backgroundColor: theme.colors.ink, borderRadius: 22, padding: 20, gap: 4 },
-  heroLabel: { color: theme.colors.onInkMuted, fontWeight: "800" },
-  heroValue: { color: "#FFFFFF", fontWeight: "900", fontSize: 40, letterSpacing: -1 },
-  heroSub: { color: theme.colors.onInkMuted, fontSize: 13 },
-  bars: { flexDirection: "row", gap: 8, height: 90, alignItems: "flex-end", marginVertical: 12 },
-  barCol: { flex: 1, height: "100%", alignItems: "center", gap: 4 },
+  cta: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 18, borderRadius: 10, backgroundColor: theme.colors.primary },
+  ctaText: { color: "#FFFFFF", fontWeight: "600", fontSize: 14 },
+  notice: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14, borderRadius: 10, borderWidth: 1, backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
+  noticeText: { flex: 1, color: theme.colors.text, lineHeight: 20, fontSize: 14 },
+  noticeTitle: { fontWeight: "700" },
+  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  kpiWrap: { flexGrow: 1, flexBasis: 160, minWidth: 150 },
+  kpi: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16, gap: 6, minHeight: 132 },
+  kpiWarning: { borderColor: theme.colors.warningBorder },
+  kpiTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  kpiLabel: { color: theme.colors.muted, fontWeight: "600", fontSize: 13 },
+  kpiIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: theme.colors.primarySoft, alignItems: "center", justifyContent: "center" },
+  kpiValue: { color: theme.colors.text, fontWeight: "700", fontSize: 26, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
+  kpiHelper: { color: theme.colors.muted, fontSize: 13, lineHeight: 18 },
+  twoColumns: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  column: { flexGrow: 1, flexBasis: 360, minWidth: 280 },
+  bars: { flexDirection: "row", gap: 10, height: 170, alignItems: "flex-end" },
+  barCol: { flex: 1, height: "100%", alignItems: "center", gap: 6 },
+  barValue: { color: theme.colors.muted, fontSize: 11, height: 14, fontVariant: ["tabular-nums"] },
   barTrack: { flex: 1, width: "100%", justifyContent: "flex-end" },
-  bar: { width: "100%", backgroundColor: theme.colors.onInkAccent, borderRadius: 6 },
-  barToday: { backgroundColor: theme.colors.mint },
-  barLabel: { color: theme.colors.onInkMuted, fontSize: 11, fontWeight: "800" },
-  sideCards: { flexGrow: 1, flexBasis: 240, gap: 12 },
-  miniCard: { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16, justifyContent: "center" },
-  miniWarn: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
-  topRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  topRank: { width: 22, height: 22, borderRadius: 11, backgroundColor: theme.colors.primarySoft, color: theme.colors.primaryText, textAlign: "center", fontWeight: "900", fontSize: 12, lineHeight: 22 },
-  topValue: { color: theme.colors.text, fontWeight: "800" },
-  shortcut: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-  shortcutText: { color: theme.colors.text, fontWeight: "700", flex: 1 },
+  bar: { width: "100%", backgroundColor: theme.colors.infoBorder, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  barToday: { backgroundColor: theme.colors.primary },
+  barLabel: { color: theme.colors.muted, fontSize: 12, fontWeight: "500" },
+  muted: { color: theme.colors.muted, fontSize: 13, lineHeight: 18 },
+  tableRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  tableHead: { backgroundColor: theme.colors.tableHead, paddingVertical: 9 },
+  th: { color: theme.colors.muted, fontSize: 12, fontWeight: "600" },
+  td: { color: theme.colors.text, fontSize: 14 },
+  amount: { textAlign: "right", fontWeight: "600", fontVariant: ["tabular-nums"] },
+  tableFoot: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingVertical: 12, paddingHorizontal: 18 },
+  shortcut: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 64, paddingVertical: 12, paddingHorizontal: 18 },
+  shortcutDivider: { borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  shortcutTitle: { color: theme.colors.text, fontWeight: "600", fontSize: 14 },
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  metricCard: { minWidth: 190, flexGrow: 1, flexBasis: 0, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16 },
-  metricLabel: { color: theme.colors.muted, fontWeight: "800" },
-  metricValue: { color: theme.colors.text, fontWeight: "900", fontSize: 27, marginTop: 8 },
+  metricCard: { minWidth: 190, flexGrow: 1, flexBasis: 0, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16 },
+  metricLabel: { color: theme.colors.muted, fontWeight: "600" },
+  metricValue: { color: theme.colors.text, fontWeight: "700", fontSize: 27, marginTop: 8 },
   metricHelper: { color: theme.colors.muted, fontSize: 12, marginTop: 4 },
-  twoColumns: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  placeholderCard: { minWidth: 280, flexGrow: 1, flexBasis: 0, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 18, gap: 9 },
-  cardTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 },
+  placeholderCard: { minWidth: 280, flexGrow: 1, flexBasis: 0, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 18, gap: 9 },
+  cardTitle: { color: theme.colors.text, fontWeight: "700", fontSize: 16 },
   copy: { color: theme.colors.muted, lineHeight: 21 },
   bullet: { color: theme.colors.muted, lineHeight: 21 },
-  configLink: { minWidth: 280, flexGrow: 1, flexBasis: 0, minHeight: 100, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 18, flexDirection: "row", alignItems: "center", gap: 12 },
-  chevron: { color: theme.colors.primaryText, fontWeight: "900" }
+  configLink: { minWidth: 280, flexGrow: 1, flexBasis: 0, minHeight: 100, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 18, flexDirection: "row", alignItems: "center", gap: 12 },
+  chevron: { color: theme.colors.primaryText, fontWeight: "700" }
 });

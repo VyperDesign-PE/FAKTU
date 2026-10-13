@@ -331,7 +331,13 @@ Correcciones de la revisión técnica de la 0.12.2.
 - La UI identifica explícitamente `Padrón Reducido oficial de SUNAT` y muestra fecha de actualización.
 - Nuevo endpoint `/v1/system/ruc-registry/status` para Estado del sistema.
 
-# Sin publicar - Mejoras de navegación, consistencia y marca (rama de trabajo)
+# Sin publicar - Rediseño profesional
+
+- Panel de gestión sobrio: menú lateral con iconos, barra superior con Volver/estado/negocio, tarjetas y tablas, claro por defecto.
+- Navegación web con URLs (`/resumen`, `/vender`, `/historial`…): el botón atrás del navegador funciona; botón Volver en todas las pantallas.
+- Pantallas secundarias comparten el menú de escritorio. Botones en formato oración.
+
+# Mejoras de navegación, consistencia y marca
 
 - Rutas `Customers`, `CustomerForm` y `BillingSettings` registradas; "Proveedor y ambiente" y "Productos y stock" accesibles desde Más.
 - Una sola definición de venta vigente, por revisar y pendientes (`domain/receiptMetrics.ts`) y de estados (`domain/receiptStatus.ts`).

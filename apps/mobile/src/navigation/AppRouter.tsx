@@ -1,5 +1,5 @@
 import { ActivityIndicator, View } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, type LinkingOptions } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "./types";
 import { useApp } from "../context/AppContext";
@@ -33,6 +33,34 @@ import { GuideDetailScreen, GuideFormScreen, GuidesScreen } from "../screens/gui
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+/**
+ * Direcciones de la web: cada pantalla principal tiene su URL, así el botón "atrás" del navegador
+ * y los marcadores funcionan. Solo se activa con la sesión iniciada y el alta completa (ver abajo),
+ * para que una URL no abra pantallas protegidas sin ingresar.
+ */
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: [],
+  config: {
+    screens: {
+      Dashboard: "resumen",
+      POSVenta: "vender",
+      HistorialComprobantes: "historial",
+      PorCobrar: "por-cobrar",
+      Productos: "productos",
+      Configuracion: "mas",
+      ReceiptDetail: "comprobante/:clientTransactionId",
+      Customers: "clientes",
+      Guides: "guias",
+      CashClose: "caja",
+      Seguridad: "seguridad",
+      BillingSettings: "facturacion",
+      SystemStatus: "sistema",
+      Business: "negocio",
+      Support: "soporte"
+    }
+  }
+};
+
 export function AppRouter() {
   const { hydrated: appHydrated, profile } = useApp();
   const { hydrated: authHydrated, isAuthenticated } = useAuth();
@@ -49,7 +77,11 @@ export function AppRouter() {
 
   return (
     // Al entrar o salir de sesión se reinicia la navegación (evita quedar en pantallas protegidas).
-    <NavigationContainer key={isAuthenticated ? "session" : "guest"}>
+    <NavigationContainer
+      key={isAuthenticated ? "session" : "guest"}
+      linking={isAuthenticated && profile.onboardingComplete ? linking : undefined}
+      documentTitle={{ formatter: () => "FAKTU — Facturación electrónica" }}
+    >
       <Stack.Navigator initialRouteName={initialRouteName} screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />

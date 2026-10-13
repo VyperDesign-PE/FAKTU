@@ -19,19 +19,25 @@ function resolve(): ThemeColors {
 
 export const theme = {
   colors: resolve(),
-  radius: { sm: 10, md: 14, lg: 18, xl: 22 }
+  radius: { sm: 8, md: 10, lg: 12, xl: 16 }
 } as const;
+
+/** Sombra suave de tarjetas: `boxShadow` en web; elevación mínima en nativo. */
+export const cardShadow = (Platform.OS === "web"
+  ? { boxShadow: "0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06)" }
+  : { elevation: 1 }) as object;
 
 export type ThemeMode = "light" | "dark" | "system";
 const STORAGE_KEY = "faktu_theme_mode";
 
 export function getThemeMode(): ThemeMode {
   if (!isWeb) return "system";
+  // En web el modo claro es el predeterminado; el oscuro solo si la persona lo elige.
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved === "light" || saved === "dark" ? saved : "system";
+    return saved === "dark" ? "dark" : "light";
   } catch {
-    return "system";
+    return "light";
   }
 }
 
