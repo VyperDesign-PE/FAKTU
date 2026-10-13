@@ -46,7 +46,7 @@ npm run demo:seed
 El repositorio trae `render.yaml` (Blueprint). Render crea el servicio web con HTTPS, la base PostgreSQL y todas las claves secretas; en el primer arranque **carga la demo** y la pantalla de ingreso muestra el botón **"Ver la demo"**: tus prospectos entran con un toque, sin escribir contraseñas.
 
 1. Entra a https://dashboard.render.com y crea una cuenta con GitHub (no pide tarjeta para el plan gratis).
-2. **New → Blueprint** → conecta el repositorio `VyperDesign-PE/FAKTU`, rama `faktu-0.13-estabilizacion` (o `main` cuando se fusione).
+2. **New → Blueprint** → conecta el repositorio `VyperDesign-PE/FAKTU`, la rama que quieras desplegar (por defecto `main`).
 3. **Apply**. La primera construcción tarda 5–8 minutos (Logs muestra el avance; al final aparece `demo cargada`).
 4. Abre `https://faktu-xxxx.onrender.com` y toca **VER LA DEMO**.
 5. Comparte el enlace. En el celular: "Agregar a pantalla de inicio" la instala como app.

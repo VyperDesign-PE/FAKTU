@@ -179,7 +179,7 @@ npm run dev:mobile
 
 ## Importante
 
-FAKTU **todavía no emite comprobantes legales reales ante SUNAT**. El proveedor por defecto es `mock` (bloqueado en producción) y el adaptador APIsPERU solo está validado contra mocks; falta la primera boleta/factura beta real (`PRIMERA_BOLETA_BETA.md`). La emisión en producción permanece bloqueada hasta definir `BILLING_PRODUCTION_ENABLED=true`.
+FAKTU **todavía no emite comprobantes legales reales ante SUNAT**. El proveedor por defecto es `mock` (en producción solo se bloquea si defines `ALLOW_MOCK_BILLING=false`; el valor por defecto es `true` para poder correr demos y el piloto en modo práctica) y el adaptador APIsPERU solo está validado contra mocks; falta la primera boleta/factura beta real (`PRIMERA_BOLETA_BETA.md`). La emisión en producción permanece bloqueada hasta definir `BILLING_PRODUCTION_ENABLED=true`.
 
 También falta conectar almacenamiento privado para JSON/XML/PDF/CDR y compartirlos mediante enlaces firmados temporales.
 
