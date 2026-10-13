@@ -51,6 +51,15 @@ Referencia pedida: panel de gestión con barra lateral oscura e iconos, contenid
 - **Esquinas**: 10 px en botones y campos, 12 px en tarjetas. Sin emojis ni verde en la interfaz: el verde solo indica estados.
 - **Navegación web**: cada pantalla principal tiene URL (`/resumen`, `/vender`, `/historial`…), así "atrás" del navegador funciona. Solo se activa con sesión y alta completa.
 
+## Identidad visual v3
+- **Tipografía Inter** en la web (Google Fonts, `display=swap`: si no carga, se usa la del sistema sin bloquear la app). En nativo, fuente del sistema.
+- **Fondo de marca** (`components/BrandBackdrop.tsx`): degradado azul marino → azul con retícula sutil y dos halos. Se usa en el panel de acceso, la cabecera de bienvenida del Resumen y la tarjeta de estado de facturación del menú. Solo CSS en web; color sólido en nativo.
+- **Acceso** (`components/AuthLayout.tsx`): pantalla dividida con panel de marca (propuesta de valor y cuatro funciones reales) y formulario a la derecha; en el celular, franja de marca arriba. Campos con icono y "mostrar contraseña".
+- **Menú de cuenta** (`components/UserMenu.tsx`): negocio, correo y RUC; Datos del negocio, Seguridad, Configuración, Ayuda y **Cerrar sesión** (antes solo estaba dentro de Soporte).
+- **Migas de pan** en la barra superior ("FAKTU › Historial").
+- **Indicadores** con icono en color de acento (azul, violeta, verde azulado; ámbar si piden atención) y una franja lateral del mismo color. Los acentos son decorativos: el estado siempre va en texto.
+- **Tarjeta de facturación** en el menú lateral: "Modo práctica" o "Facturación activa", con acceso a la configuración.
+
 ## Tipografía y espaciado
 Se mantiene la fuente del sistema (sin fuentes remotas). Pesos: 700 para títulos e importes, 600 para etiquetas y 500 para texto de menú. Importes con prefijo `S/`. Los importes usan cifras tabulares (`tabular-nums`). **Pendiente**: escala tipográfica formal y fuente propia.
 Controles táctiles ≥ 44 px (botones de cabecera, chips, atajos).

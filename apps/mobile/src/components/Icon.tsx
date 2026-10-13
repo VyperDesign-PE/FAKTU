@@ -27,14 +27,24 @@ const PATHS = {
   shield: ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"],
   file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6", "M16 13H8", "M16 17H8"],
   truck: ["M1 3h15v13H1z", "M16 8h4l3 3v5h-7z", "M5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z", "M18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"],
-  wallet: ["M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 1 0-4h14v4", "M3 5v14a2 2 0 0 0 2 2h16v-5", "M18 12a2 2 0 0 0 0 4h4v-4z"]
+  wallet: ["M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 1 0-4h14v4", "M3 5v14a2 2 0 0 0 2 2h16v-5", "M18 12a2 2 0 0 0 0 4h4v-4z"],
+  eye: ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+  eyeOff: ["M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94", "M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19", "M14.12 14.12a3 3 0 1 1-4.24-4.24", "M1 1l22 22"],
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"],
+  user: ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
+  lock: ["M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z", "M7 11V7a5 5 0 0 1 10 0v4"],
+  chevronDown: ["M6 9l6 6 6-6"],
+  zap: ["M13 2L3 14h9l-1 8 10-12h-9l1-8z"],
+  building: ["M3 21h18", "M5 21V7l8-4v18", "M19 21V11l-6-4", "M9 9v.01", "M9 12v.01", "M9 15v.01", "M9 18v.01"],
+  mail: ["M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", "M22 6l-10 7L2 6"]
 } as const;
 
 export type IconName = keyof typeof PATHS;
 
 const FALLBACK: Record<IconName, string> = {
   home: "⌂", plus: "+", cart: "⌑", receipt: "☰", card: "▭", box: "▤", users: "☺", settings: "⚙", more: "⋯", back: "←", chevron: "›",
-  sun: "☀", moon: "☾", check: "✓", alert: "!", wifi: "◠", clock: "◷", trend: "↗", shield: "◇", file: "▤", truck: "⇢", wallet: "▭"
+  sun: "☀", moon: "☾", check: "✓", alert: "!", wifi: "◠", clock: "◷", trend: "↗", shield: "◇", file: "▤", truck: "⇢", wallet: "▭",
+  eye: "◉", eyeOff: "◎", logout: "⇥", user: "☺", lock: "⚿", chevronDown: "⌄", zap: "ϟ", building: "▦", mail: "✉"
 };
 
 export function Icon({ name, size = 20, color = "currentColor", strokeWidth = 2 }: { name: IconName; size?: number; color?: string; strokeWidth?: number }) {

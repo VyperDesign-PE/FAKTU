@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
 import { cardShadow, theme } from "../theme";
 import { sentenceCase } from "../domain/text";
+import { Icon, type IconName } from "./Icon";
 
 export function PrimaryButton({ label, onPress, disabled = false, tone = "primary" }: { label: string; onPress: () => void; disabled?: boolean; tone?: "primary" | "success" | "outline" }) {
   return (
@@ -21,6 +22,10 @@ export function PrimaryButton({ label, onPress, disabled = false, tone = "primar
 type TextFieldProps = {
   label: string;
   error?: string;
+  /** Icono dentro del campo, a la izquierda. */
+  icon?: IconName;
+  /** Con secureTextEntry: botón para mostrar u ocultar lo escrito. */
+  secureToggle?: boolean;
 } & Pick<
   TextInputProps,
   | "value"
@@ -49,28 +54,40 @@ export function TextField({
   textContentType,
   onSubmitEditing,
   returnKeyType,
-  editable = true
+  editable = true,
+  icon,
+  secureToggle = false
 }: TextFieldProps) {
+  const [revealed, setRevealed] = useState(false);
+  const hidden = secureTextEntry && !revealed;
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputWrap}>
+      {icon ? <View style={styles.inputIcon}><Icon name={icon} size={18} color={theme.colors.muted} /></View> : null}
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
+        secureTextEntry={hidden}
         autoCapitalize={autoCapitalize}
         autoComplete={autoComplete}
         textContentType={textContentType}
         onSubmitEditing={onSubmitEditing}
         returnKeyType={returnKeyType}
         editable={editable}
-        style={[styles.input, error && styles.inputError, !editable && styles.inputDisabled]}
+        style={[styles.input, icon && { paddingLeft: 44 }, secureToggle && { paddingRight: 48 }, error && styles.inputError, !editable && styles.inputDisabled]}
         placeholderTextColor={theme.colors.muted}
         accessibilityLabel={label}
         accessibilityHint={error}
       />
+      {secureToggle && secureTextEntry ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={revealed ? "Ocultar contraseña" : "Mostrar contraseña"} onPress={() => setRevealed((value) => !value)} style={styles.reveal} hitSlop={6}>
+          <Icon name={revealed ? "eyeOff" : "eye"} size={18} color={theme.colors.muted} />
+        </Pressable>
+      ) : null}
+      </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
@@ -121,6 +138,9 @@ const styles = StyleSheet.create({
   outlineText: { color: theme.colors.text },
   field: { gap: 7 },
   label: { color: theme.colors.text, fontWeight: "600" },
+  inputWrap: { position: "relative", borderRadius: 10 },
+  inputIcon: { position: "absolute", left: 14, top: 0, bottom: 0, justifyContent: "center", zIndex: 1 },
+  reveal: { position: "absolute", right: 4, top: 4, bottom: 4, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   input: { minHeight: 48, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
   inputError: { borderColor: theme.colors.danger, backgroundColor: theme.colors.dangerSoft },
   inputDisabled: { opacity: 0.72 },

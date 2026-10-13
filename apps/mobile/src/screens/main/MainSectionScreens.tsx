@@ -10,6 +10,8 @@ import { useApp } from "../../context/AppContext";
 import { ReceiptList } from "../management/ManagementScreens";
 import { getBillingSettings, getDailyClose, getInsights, type BillingSettings, type DailyClose, type Insights } from "../../services/api";
 import { cardShadow, theme } from "../../theme";
+import { BrandBackdrop } from "../../components/BrandBackdrop";
+import { BrandMark } from "../../components/Brand";
 import { attentionCount, awaitingSendCount, effectiveSales } from "../../domain/receiptMetrics";
 
 type Props<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
@@ -23,14 +25,30 @@ function deltaText(today: number, before: number) {
   return pct === 0 ? "Igual que ayer" : `${Math.abs(pct)}% ${pct > 0 ? "más" : "menos"} que ayer`;
 }
 
-function KpiCard({ label, value, helper, icon, onPress, tone = "default" }: { label: string; value: string; helper: string; icon: IconName; onPress?: () => void; tone?: "default" | "warning" }) {
+type Accent = "blue" | "violet" | "teal" | "warning";
+const ACCENTS: Record<Accent, { fg: string; bg: string }> = {
+  blue: { fg: theme.colors.primaryText, bg: theme.colors.primarySoft },
+  violet: { fg: theme.colors.accentViolet, bg: theme.colors.accentVioletSoft },
+  teal: { fg: theme.colors.accentTeal, bg: theme.colors.accentTealSoft },
+  warning: { fg: theme.colors.warning, bg: theme.colors.warningSoft }
+};
+
+function greeting(now = new Date()) {
+  const hour = now.getHours();
+  return hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+}
+
+function KpiCard({ label, value, helper, icon, onPress, tone = "default", accent = "blue" }: { label: string; value: string; helper: string; icon: IconName; onPress?: () => void; tone?: "default" | "warning"; accent?: Accent }) {
+  const colors = ACCENTS[tone === "warning" ? "warning" : accent];
   const body = (
     <View style={[styles.kpi, cardShadow, tone === "warning" && styles.kpiWarning]}>
+      <View style={[styles.kpiStripe, { backgroundColor: colors.fg }]} />
       <View style={styles.kpiTop}>
-        <Text style={styles.kpiLabel}>{label}</Text>
-        <View style={[styles.kpiIcon, tone === "warning" && { backgroundColor: theme.colors.warningSoft }]}>
-          <Icon name={icon} size={18} color={tone === "warning" ? theme.colors.warning : theme.colors.primaryText} />
+        <View style={[styles.kpiIcon, { backgroundColor: colors.bg }]}>
+          <Icon name={icon} size={20} color={colors.fg} />
         </View>
+        <Text style={styles.kpiLabel}>{label}</Text>
+        {onPress ? <Icon name="chevron" size={16} color={theme.colors.muted} /> : null}
       </View>
       <Text style={styles.kpiValue}>{value}</Text>
       <Text style={styles.kpiHelper} numberOfLines={2}>{helper}</Text>
@@ -83,9 +101,31 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
       currentRoute="Dashboard"
       navigation={navigation}
       title="Resumen"
-      subtitle={`${business} · ${dateLabel}`}
-      action={<Pressable accessibilityRole="button" onPress={startSale} style={styles.cta}><Icon name="plus" size={18} color="#FFFFFF" /><Text style={styles.ctaText}>Nueva venta</Text></Pressable>}
+      hideHeader
     >
+      <BrandBackdrop style={styles.hero}>
+        <View style={styles.heroMark} aria-hidden><BrandMark size={150} /></View>
+        <Text style={styles.heroDate}>{dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}</Text>
+        <Text accessibilityRole="header" style={styles.heroTitle}>{greeting()}, {business}</Text>
+        <Text style={styles.heroText}>
+          {insights
+            ? insights.today.count
+              ? `Hoy llevas ${money(insights.today.total)} en ${insights.today.count} ${insights.today.count === 1 ? "venta" : "ventas"}. ${deltaText(insights.today.total, insights.yesterday)}.`
+              : "Todavía no hay ventas hoy. Cuando registres la primera, la verás aquí."
+            : online ? "Cargando el resumen de tu negocio…" : "Sin Internet: puedes seguir vendiendo; el resumen se actualiza al volver la conexión."}
+        </Text>
+        <View style={styles.heroActions}>
+          <Pressable accessibilityRole="button" onPress={startSale} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.heroPrimary, hovered && { opacity: 0.92 }]}>
+            <Icon name="plus" size={18} color={theme.colors.ink} />
+            <Text style={styles.heroPrimaryText}>Nueva venta</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => navigation.navigate("HistorialComprobantes")} style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [styles.heroSecondary, hovered && { backgroundColor: "rgba(255, 255, 255, 0.12)" }]}>
+            <Icon name="receipt" size={18} color="#FFFFFF" />
+            <Text style={styles.heroSecondaryText}>Ver historial</Text>
+          </Pressable>
+        </View>
+      </BrandBackdrop>
+
       <SystemStatusBanner online={online} pendingCount={pendingCount} onPress={() => navigation.navigate("SystemStatus")} />
       {practiceMode ? (
         <View style={styles.notice} accessibilityRole="alert">
@@ -96,8 +136,8 @@ export function DashboardScreen({ navigation }: Props<"Dashboard">) {
 
       <View style={styles.kpiRow}>
         <KpiCard label="Ventas de hoy" icon="trend" value={todayTotal !== undefined ? money(todayTotal) : placeholder} helper={insights ? `${insights.today.count} ${insights.today.count === 1 ? "venta" : "ventas"} · ${deltaText(insights.today.total, insights.yesterday)}` : online ? "Cargando…" : "Sin Internet"} />
-        <KpiCard label="Últimos 7 días" icon="receipt" value={insights ? money(insights.week.total) : placeholder} helper={insights ? `${insights.week.series.reduce((sum, day) => sum + day.count, 0)} comprobantes` : " "} />
-        <KpiCard label="Por cobrar (fiados)" icon="wallet" onPress={() => navigation.navigate("PorCobrar")} value={insights ? money(insights.receivables.total) : placeholder} helper={insights?.receivables.customers ? `${insights.receivables.customers} cliente(s) · la más antigua, ${insights.receivables.oldestDays} d` : "Nadie te debe"} />
+        <KpiCard label="Últimos 7 días" icon="receipt" accent="violet" value={insights ? money(insights.week.total) : placeholder} helper={insights ? `${insights.week.series.reduce((sum, day) => sum + day.count, 0)} comprobantes` : " "} />
+        <KpiCard label="Por cobrar (fiados)" icon="wallet" accent="teal" onPress={() => navigation.navigate("PorCobrar")} value={insights ? money(insights.receivables.total) : placeholder} helper={insights?.receivables.customers ? `${insights.receivables.customers} cliente(s) · la más antigua, ${insights.receivables.oldestDays} d` : "Nadie te debe"} />
         <KpiCard label="Stock bajo" icon="box" tone={insights?.lowStock.length ? "warning" : "default"} onPress={() => navigation.navigate("Productos")} value={insights ? String(insights.lowStock.length) : placeholder} helper={insights?.lowStock.length ? insights.lowStock.slice(0, 3).map((p) => `${p.name} (${p.stockQty})`).join(" · ") : "Todo con stock suficiente"} />
       </View>
 
@@ -251,11 +291,22 @@ const styles = StyleSheet.create({
   noticeTitle: { fontWeight: "700" },
   kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   kpiWrap: { flexGrow: 1, flexBasis: 160, minWidth: 150 },
-  kpi: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16, gap: 6, minHeight: 132 },
+  kpi: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 18, paddingLeft: 21, gap: 8, minHeight: 140, overflow: "hidden" },
   kpiWarning: { borderColor: theme.colors.warningBorder },
-  kpiTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  kpiLabel: { color: theme.colors.muted, fontWeight: "600", fontSize: 13 },
-  kpiIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: theme.colors.primarySoft, alignItems: "center", justifyContent: "center" },
+  kpiTop: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 },
+  kpiStripe: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3 },
+  hero: { borderRadius: 16, padding: 28, gap: 8, minHeight: 190, justifyContent: "center" },
+  heroMark: { position: "absolute", right: 28, top: 20, opacity: 0.1, transform: [{ rotate: "-8deg" }] },
+  heroDate: { color: "#A9C2F2", fontSize: 13, fontWeight: "600", letterSpacing: 0.3 },
+  heroTitle: { color: "#FFFFFF", fontSize: 28, fontWeight: "700", letterSpacing: -0.5, maxWidth: 720 },
+  heroText: { color: "#D5DEF0", fontSize: 15, lineHeight: 22, maxWidth: 640 },
+  heroActions: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 },
+  heroPrimary: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 18, borderRadius: 10, backgroundColor: "#FFFFFF" },
+  heroPrimaryText: { color: theme.colors.ink, fontWeight: "600", fontSize: 14 },
+  heroSecondary: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 18, borderRadius: 10, borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.35)" },
+  heroSecondaryText: { color: "#FFFFFF", fontWeight: "600", fontSize: 14 },
+  kpiLabel: { flexGrow: 1, flexShrink: 0, flexBasis: 110, color: theme.colors.muted, fontWeight: "600", fontSize: 13 },
+  kpiIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: theme.colors.primarySoft, alignItems: "center", justifyContent: "center" },
   kpiValue: { color: theme.colors.text, fontWeight: "700", fontSize: 26, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
   kpiHelper: { color: theme.colors.muted, fontSize: 13, lineHeight: 18 },
   twoColumns: { flexDirection: "row", flexWrap: "wrap", gap: 16 },

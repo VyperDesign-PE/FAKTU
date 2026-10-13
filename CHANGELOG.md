@@ -331,7 +331,13 @@ Correcciones de la revisión técnica de la 0.12.2.
 - La UI identifica explícitamente `Padrón Reducido oficial de SUNAT` y muestra fecha de actualización.
 - Nuevo endpoint `/v1/system/ruc-registry/status` para Estado del sistema.
 
-# Sin publicar - Rediseño profesional
+# Sin publicar - Identidad visual v3 y cuenta de usuario
+
+- Acceso y registro a pantalla dividida con panel de marca; mostrar/ocultar contraseña; aviso honesto de recuperación de contraseña (aún manual); la verificación en dos pasos acepta códigos de recuperación.
+- Menú de cuenta en la barra superior con Cerrar sesión; la dirección vuelve a la raíz al salir.
+- Tipografía Inter (web), fondo de marca con degradado, cabecera de bienvenida en el Resumen, indicadores con acentos de color, migas de pan y tarjeta de estado de facturación.
+
+# Rediseño profesional
 
 - Panel de gestión sobrio: menú lateral con iconos, barra superior con Volver/estado/negocio, tarjetas y tablas, claro por defecto.
 - Navegación web con URLs (`/resumen`, `/vender`, `/historial`…): el botón atrás del navegador funciona; botón Volver en todas las pantallas.

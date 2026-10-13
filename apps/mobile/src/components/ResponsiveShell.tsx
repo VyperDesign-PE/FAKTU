@@ -6,6 +6,10 @@ import { useApp } from "../context/AppContext";
 import { cardShadow, effectiveScheme, getThemeMode, setThemeMode, theme } from "../theme";
 import { BrandLogo } from "./Brand";
 import { Icon, type IconName } from "./Icon";
+import { UserMenu } from "./UserMenu";
+import { BrandBackdrop } from "./BrandBackdrop";
+import { getBillingSettings, type BillingSettings } from "../services/api";
+import { useEffect } from "react";
 
 export type MainRouteName = "Dashboard" | "POSVenta" | "HistorialComprobantes" | "Productos" | "PorCobrar" | "Configuracion";
 
@@ -20,6 +24,8 @@ type Props = {
   action?: ReactNode;
   /** Pantalla completa sin márgenes (el punto de venta controla su propio scroll). */
   fill?: boolean;
+  /** Oculta el título de página (la pantalla trae su propia cabecera, como el Resumen). */
+  hideHeader?: boolean;
 };
 
 type NavItem = { route: string; label: string; shortLabel?: string; icon: IconName; bottom?: boolean };
@@ -41,6 +47,37 @@ const MANAGE_ITEMS: NavItem[] = [
   { route: "CashClose", label: "Cierre de caja", icon: "file" },
   { route: "Seguridad", label: "Seguridad", icon: "shield" }
 ];
+
+/** Nombre visible de cada pantalla (migas de pan de la barra superior). */
+const ROUTE_LABELS: Record<string, string> = {
+  Dashboard: "Resumen", POSVenta: "Vender", HistorialComprobantes: "Historial", PorCobrar: "Por cobrar", Productos: "Productos y stock",
+  Configuracion: "Configuración", Customers: "Clientes", CustomerForm: "Cliente", Guides: "Guías de remisión", GuideForm: "Nueva guía",
+  GuideDetail: "Guía de remisión", CashClose: "Cierre de caja", Seguridad: "Seguridad", BillingSettings: "Facturación electrónica",
+  SystemStatus: "Estado del sistema", Business: "Datos del negocio", Support: "Ayuda y soporte", ReceiptDetail: "Comprobante",
+  ProductForm: "Producto", ReceiptHistory: "Comprobantes", Catalog: "Catálogo"
+};
+
+/** Estado de la facturación electrónica en el menú lateral: práctica o activa, con acceso a la configuración. */
+function BillingStatusCard({ onOpen }: { onOpen: () => void }) {
+  const { online } = useApp();
+  const [billing, setBilling] = useState<BillingSettings>();
+  useEffect(() => { if (online) getBillingSettings().then(setBilling).catch(() => undefined); }, [online]);
+  if (!billing) return null;
+  const practice = billing.providerCode === "mock" || !billing.credentialConfigured;
+  return (
+    <BrandBackdrop style={styles.billingCard}>
+      <View style={styles.billingHead}>
+        <Icon name={practice ? "alert" : "check"} size={16} color={practice ? theme.colors.onInkWarning : "#7BE0B3"} />
+        <Text style={styles.billingTitle}>{practice ? "Modo práctica" : "Facturación activa"}</Text>
+      </View>
+      <Text style={styles.billingText}>{practice ? "Tus comprobantes aún no tienen validez ante SUNAT." : `Proveedor: ${billing.providerCode} · ${billing.environment === "production" ? "producción" : "pruebas"}`}</Text>
+      <Pressable accessibilityRole="link" onPress={onOpen} style={styles.billingLink}>
+        <Text style={styles.billingLinkText}>{practice ? "Ver cómo activarla" : "Ver configuración"}</Text>
+        <Icon name="chevron" size={14} color="#FFFFFF" />
+      </Pressable>
+    </BrandBackdrop>
+  );
+}
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "F";
 
@@ -107,6 +144,7 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
             <NavButton key={item.route} item={item} active={item.route === routeName} onPress={() => navigation.navigate(item.route)} />
           ))}
         </ScrollView>
+        <BillingStatusCard onOpen={() => navigation.navigate("BillingSettings")} />
         <View style={styles.sidebarFooter}>
           <NavButton item={{ route: "Configuracion", label: "Configuración", icon: "settings" }} active={routeName === "Configuracion"} onPress={() => navigation.navigate("Configuracion")} />
         </View>
@@ -115,19 +153,18 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
       <View style={styles.contentColumn}>
         <View style={styles.desktopBar}>
           <BackButton />
+          <View style={styles.crumbs} accessibilityLabel={`Estás en: ${ROUTE_LABELS[routeName] ?? "FAKTU"}`}>
+            <Text style={styles.crumbMuted}>FAKTU</Text>
+            <Icon name="chevron" size={14} color={theme.colors.muted} />
+            <Text style={styles.crumbCurrent} numberOfLines={1}>{ROUTE_LABELS[routeName] ?? businessName}</Text>
+          </View>
           <View style={{ flex: 1 }} />
           <View style={[styles.statusPill, warn ? styles.statusWarn : styles.statusOk]} accessibilityLabel={`Estado: ${statusLabel}`}>
             <View style={[styles.statusDot, { backgroundColor: warn ? theme.colors.warning : theme.colors.success }]} />
             <Text style={[styles.statusText, { color: warn ? theme.colors.warning : theme.colors.success }]}>{statusLabel}</Text>
           </View>
           <ThemeToggle />
-          <View style={styles.userChip}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{initials(businessName)}</Text></View>
-            <View>
-              <Text style={styles.userName} numberOfLines={1}>{businessName}</Text>
-              <Text style={styles.userMeta}>{profile.ruc ? `RUC ${profile.ruc}` : "Administrador"}</Text>
-            </View>
-          </View>
+          <View style={styles.userChip}><UserMenu /></View>
         </View>
         {children}
       </View>
@@ -135,12 +172,12 @@ export function DesktopFrame({ children }: { children: ReactNode }) {
   );
 }
 
-export function ResponsiveShell({ currentRoute, children, title, subtitle, action, fill }: Props) {
+export function ResponsiveShell({ currentRoute, children, title, subtitle, action, fill, hideHeader }: Props) {
   const navigation = useNavigation<{ navigate(route: string): void }>();
   const { width } = useWindowDimensions();
   const desktop = width >= 900;
 
-  const header = (
+  const header = hideHeader ? null : (
     <View style={styles.pageHeader}>
       <View style={{ flex: 1, minWidth: 200 }}>
         <Text accessibilityRole="header" style={styles.pageTitle}>{title}</Text>
@@ -168,7 +205,10 @@ export function ResponsiveShell({ currentRoute, children, title, subtitle, actio
           <BackButton onInk />
           <BrandLogo size={28} light />
         </View>
-        <ThemeToggle onInk />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <ThemeToggle onInk />
+          <UserMenu compact />
+        </View>
       </View>
       <View style={styles.contentColumn}>
         {body}
@@ -234,6 +274,15 @@ const styles = StyleSheet.create({
   statusWarn: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 13, fontWeight: "600" },
+  crumbs: { flexDirection: "row", alignItems: "center", gap: 6, marginLeft: 4, flexShrink: 1 },
+  crumbMuted: { color: theme.colors.muted, fontSize: 13, fontWeight: "500" },
+  crumbCurrent: { color: theme.colors.text, fontSize: 13, fontWeight: "600" },
+  billingCard: { borderRadius: 12, padding: 14, gap: 6, marginBottom: 12, borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.10)" },
+  billingHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  billingTitle: { color: "#FFFFFF", fontWeight: "600", fontSize: 14 },
+  billingText: { color: "#C3D0EA", fontSize: 12, lineHeight: 17 },
+  billingLink: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 32 },
+  billingLinkText: { color: "#FFFFFF", fontWeight: "600", fontSize: 13 },
   userChip: { flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 14, borderLeftWidth: 1, borderLeftColor: theme.colors.border },
   avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: theme.colors.primarySoft, alignItems: "center", justifyContent: "center" },
   avatarText: { color: theme.colors.primaryText, fontWeight: "700", fontSize: 13 },
