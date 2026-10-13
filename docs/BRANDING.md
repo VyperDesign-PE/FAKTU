@@ -52,7 +52,7 @@ Referencia pedida: panel de gestión con barra lateral oscura e iconos, contenid
 - **Navegación web**: cada pantalla principal tiene URL (`/resumen`, `/vender`, `/historial`…), así "atrás" del navegador funciona. Solo se activa con sesión y alta completa.
 
 ## Tipografía y espaciado
-Se mantiene la fuente del sistema (sin fuentes remotas). Pesos: 900 para títulos e importes, 800 para etiquetas. Importes con prefijo `S/`. **Pendiente**: escala tipográfica formal y cifras tabulares (no se midió el soporte en las fuentes de sistema de cada plataforma).
+Se mantiene la fuente del sistema (sin fuentes remotas). Pesos: 700 para títulos e importes, 600 para etiquetas y 500 para texto de menú. Importes con prefijo `S/`. Los importes usan cifras tabulares (`tabular-nums`). **Pendiente**: escala tipográfica formal y fuente propia.
 Controles táctiles ≥ 44 px (botones de cabecera, chips, atajos).
 
 ## Tono
