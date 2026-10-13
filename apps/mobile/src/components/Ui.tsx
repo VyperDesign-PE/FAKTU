@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
-import { theme } from "../theme";
+import { cardShadow, theme } from "../theme";
+import { sentenceCase } from "../domain/text";
 
 export function PrimaryButton({ label, onPress, disabled = false, tone = "primary" }: { label: string; onPress: () => void; disabled?: boolean; tone?: "primary" | "success" | "outline" }) {
   return (
@@ -12,7 +13,7 @@ export function PrimaryButton({ label, onPress, disabled = false, tone = "primar
       onPress={onPress}
       style={({ pressed }) => [styles.button, styles[tone], disabled && styles.disabled, pressed && !disabled && { opacity: 0.85 }]}
     >
-      <Text style={[styles.buttonText, tone === "outline" && styles.outlineText]}>{label}</Text>
+      <Text style={[styles.buttonText, tone === "outline" && styles.outlineText]}>{sentenceCase(label)}</Text>
     </Pressable>
   );
 }
@@ -76,7 +77,25 @@ export function TextField({
 }
 
 export function Card({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "success" | "warning" | "danger" | "info" }) {
-  return <View style={[styles.card, styles[`card_${tone}`]]}>{children}</View>;
+  return <View style={[styles.card, cardShadow, styles[`card_${tone}`]]}>{children}</View>;
+}
+
+/** Tarjeta con cabecera: título a la izquierda, acción (enlace) a la derecha y una línea divisoria. */
+export function Panel({ title, action, onAction, children, flush }: { title: string; action?: string; onAction?: () => void; children: ReactNode; flush?: boolean }) {
+  return (
+    <View style={[styles.panel, cardShadow]}>
+      <View style={styles.panelHeader}>
+        <Text accessibilityRole="header" style={styles.panelTitle}>{title}</Text>
+        {action && onAction ? <Pressable accessibilityRole="link" onPress={onAction} hitSlop={8}><Text style={styles.panelAction}>{action}</Text></Pressable> : null}
+      </View>
+      <View style={flush ? undefined : styles.panelBody}>{children}</View>
+    </View>
+  );
+}
+
+/** Etiqueta de estado: siempre texto (el color solo refuerza). */
+export function Badge({ label, tone = "muted" }: { label: string; tone?: "success" | "warning" | "danger" | "muted" | "info" }) {
+  return <View style={[styles.badge, styles[`badge_${tone}`]]}><Text style={[styles.badgeText, styles[`badgeText_${tone}`]]}>{label}</Text></View>;
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
@@ -92,31 +111,49 @@ export function Chip({ label, active, onPress }: { label: string; active?: boole
 }
 
 const styles = StyleSheet.create({
-  button: { minHeight: 52, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
+  button: { minHeight: 48, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
   primary: { backgroundColor: theme.colors.primary },
-  success: { backgroundColor: theme.colors.success },
-  outline: { backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.primary },
+  // El tono "success" se conserva en la API de los botones, pero usa el color de marca: el verde se reserva para estados.
+  success: { backgroundColor: theme.colors.primary },
+  outline: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
   disabled: { opacity: 0.45 },
-  buttonText: { color: "white", fontWeight: "900", fontSize: 15, textAlign: "center" },
-  outlineText: { color: theme.colors.primaryText },
+  buttonText: { color: "white", fontWeight: "700", fontSize: 15, textAlign: "center" },
+  outlineText: { color: theme.colors.text },
   field: { gap: 7 },
-  label: { color: theme.colors.text, fontWeight: "800" },
-  input: { minHeight: 51, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 13, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
+  label: { color: theme.colors.text, fontWeight: "600" },
+  input: { minHeight: 48, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
   inputError: { borderColor: theme.colors.danger, backgroundColor: theme.colors.dangerSoft },
   inputDisabled: { opacity: 0.72 },
-  errorText: { color: theme.colors.danger, fontSize: 13, fontWeight: "700" },
-  card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 17, padding: 16, gap: 9 },
+  errorText: { color: theme.colors.danger, fontSize: 13, fontWeight: "600" },
+  card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 16, gap: 9 },
   card_default: {},
   card_success: { backgroundColor: theme.colors.successSoft, borderColor: theme.colors.successBorder },
   card_warning: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
   card_danger: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder },
   card_info: { backgroundColor: theme.colors.infoSoft, borderColor: theme.colors.infoBorder },
-  sectionTitle: { fontSize: 17, fontWeight: "900", color: theme.colors.text, marginTop: 4 },
+  sectionTitle: { fontSize: 17, fontWeight: "700", color: theme.colors.text, marginTop: 4 },
   row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 7, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
   rowLabel: { color: theme.colors.muted, flex: 1 },
-  rowValue: { color: theme.colors.text, fontWeight: "800", flex: 1, textAlign: "right" },
-  chip: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 999, minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },
+  rowValue: { color: theme.colors.text, fontWeight: "600", flex: 1, textAlign: "right" },
+  chip: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 10, minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },
   chipActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
-  chipText: { color: theme.colors.muted, fontWeight: "800" },
+  panel: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, overflow: "hidden" },
+  panelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 18, minHeight: 54, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+  panelTitle: { color: theme.colors.text, fontWeight: "700", fontSize: 15 },
+  panelAction: { color: theme.colors.primaryText, fontWeight: "600", fontSize: 13 },
+  panelBody: { padding: 18, gap: 10 },
+  badge: { alignSelf: "flex-start", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+  badge_success: { backgroundColor: theme.colors.successSoft, borderColor: theme.colors.successBorder },
+  badge_warning: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
+  badge_danger: { backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.dangerBorder },
+  badge_info: { backgroundColor: theme.colors.infoSoft, borderColor: theme.colors.infoBorder },
+  badge_muted: { backgroundColor: theme.colors.mutedSoft, borderColor: theme.colors.border },
+  badgeText: { fontSize: 12, fontWeight: "600" },
+  badgeText_success: { color: theme.colors.success },
+  badgeText_warning: { color: theme.colors.warning },
+  badgeText_danger: { color: theme.colors.danger },
+  badgeText_info: { color: theme.colors.primaryText },
+  badgeText_muted: { color: theme.colors.muted },
+  chipText: { color: theme.colors.muted, fontWeight: "600" },
   chipTextActive: { color: theme.colors.primaryText }
 });

@@ -48,7 +48,7 @@ export function GuidesScreen({ navigation }: P<"Guides">) {
   useEffect(load, [load]);
 
   return <Screen title="Guías de remisión" subtitle="Sustentan el traslado de mercadería ante SUNAT.">
-    <PrimaryButton label="+ NUEVA GUÍA DE REMISIÓN" onPress={() => navigation.navigate("GuideForm", {})} disabled={!online} />
+    <PrimaryButton label="+ Nueva guía de remisión" onPress={() => navigation.navigate("GuideForm", {})} disabled={!online} />
     {error ? <Card tone="danger"><Text>{error}</Text></Card> : null}
     {!guides && !error ? <ActivityIndicator color={theme.colors.primary} /> : null}
     {guides && !guides.length ? <Card><Text style={styles.muted}>Todavía no emites guías. Crea una cuando traslades mercadería (por ejemplo, al despachar una venta).</Text></Card> : null}
@@ -217,9 +217,9 @@ export function GuideFormScreen({ navigation, route }: P<"GuideForm">) {
     {items.map((item, index) => <Card key={index}>
       <TextField label="Descripción" value={item.description} onChangeText={(value) => setItems((list) => list.map((it, i) => (i === index ? { ...it, description: value } : it)))} />
       <TextField label="Cantidad" value={item.quantity} onChangeText={(value) => setItems((list) => list.map((it, i) => (i === index ? { ...it, quantity: value } : it)))} keyboardType="decimal-pad" />
-      {items.length > 1 ? <PrimaryButton label="QUITAR" tone="outline" onPress={() => setItems((list) => list.filter((_, i) => i !== index))} /> : null}
+      {items.length > 1 ? <PrimaryButton label="Quitar" tone="outline" onPress={() => setItems((list) => list.filter((_, i) => i !== index))} /> : null}
     </Card>)}
-    <PrimaryButton label="+ AGREGAR BIEN" tone="outline" onPress={() => setItems((list) => [...list, { description: "", quantity: "1", unit: "NIU" }])} />
+    <PrimaryButton label="+ Agregar bien" tone="outline" onPress={() => setItems((list) => [...list, { description: "", quantity: "1", unit: "NIU" }])} />
 
     <PrimaryButton label={busy ? "EMITIENDO..." : "EMITIR GUÍA DE REMISIÓN"} onPress={() => void submit()} disabled={busy || !online} />
   </Screen>;
@@ -267,7 +267,7 @@ export function GuideDetailScreen({ route }: P<"GuideDetail">) {
       <Text style={styles.muted}>SUNAT acepta las guías en unos minutos. FAKTU lo revisa automáticamente; también puedes consultar ahora.</Text>
       <PrimaryButton label={busy ? "CONSULTANDO..." : "CONSULTAR ESTADO EN SUNAT"} onPress={() => void refresh()} disabled={busy || !online} />
     </> : null}
-    {guide.status === "ACCEPTED" ? <PrimaryButton label="VER / COMPARTIR PDF" onPress={() => void openPdf()} tone="success" /> : null}
+    {guide.status === "ACCEPTED" ? <PrimaryButton label="Ver / compartir PDF" onPress={() => void openPdf()} tone="success" /> : null}
   </Screen>;
 }
 

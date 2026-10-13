@@ -122,7 +122,7 @@ export function LoginScreen({ navigation }: P<"Login">) {
       <View style={styles.registerBox}>
         <Text style={styles.registerText}>¿Aún no tienes una cuenta?</Text>
         <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Register")} hitSlop={8}>
-          <Text style={styles.registerLink}>REGISTRARME</Text>
+          <Text style={styles.registerLink}>Registrarme</Text>
         </Pressable>
       </View>
 
@@ -201,7 +201,7 @@ export function RegisterScreen({ navigation }: P<"Register">) {
       <View style={styles.registerBox}>
         <Text style={styles.registerText}>¿Ya tienes una cuenta?</Text>
         <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Login")} hitSlop={8}>
-          <Text style={styles.registerLink}>INGRESAR</Text>
+          <Text style={styles.registerLink}>Ingresar</Text>
         </Pressable>
       </View>
     </Screen>
@@ -209,16 +209,16 @@ export function RegisterScreen({ navigation }: P<"Register">) {
 }
 
 const styles = StyleSheet.create({
-  demoTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 },
+  demoTitle: { color: theme.colors.text, fontWeight: "700", fontSize: 16 },
   demoText: { color: theme.colors.muted, lineHeight: 20 },
-  link: { color: theme.colors.primaryText, fontWeight: "800", textAlign: "center", paddingVertical: 6 },
+  link: { color: theme.colors.primaryText, fontWeight: "600", textAlign: "center", paddingVertical: 6 },
   header: { alignItems: "center", gap: 8, paddingTop: 24, paddingBottom: 12 },
-  logo: { width: 68, height: 68, borderRadius: 22, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" },
-  logoText: { color: "white", fontWeight: "900", fontSize: 26 },
-  title: { color: theme.colors.text, fontSize: 27, fontWeight: "900", textAlign: "center" },
+  logo: { width: 68, height: 68, borderRadius: 12, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" },
+  logoText: { color: "white", fontWeight: "700", fontSize: 26 },
+  title: { color: theme.colors.text, fontSize: 27, fontWeight: "700", textAlign: "center" },
   subtitle: { color: theme.colors.muted, lineHeight: 21, textAlign: "center", maxWidth: 320 },
   registerBox: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, paddingVertical: 4 },
   registerText: { color: theme.colors.muted },
-  registerLink: { color: theme.colors.primaryText, fontWeight: "900" },
+  registerLink: { color: theme.colors.primaryText, fontWeight: "700" },
   securityText: { color: theme.colors.muted, lineHeight: 20, textAlign: "center" }
 });

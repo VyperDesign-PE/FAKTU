@@ -188,5 +188,5 @@ const styles = StyleSheet.create({
   help: { color: theme.colors.muted, lineHeight: 20 },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   qtyName: { flex: 1, color: theme.colors.text },
-  qtyValue: { minWidth: 24, textAlign: "center", fontWeight: "800", color: theme.colors.text }
+  qtyValue: { minWidth: 24, textAlign: "center", fontWeight: "600", color: theme.colors.text }
 });

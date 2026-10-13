@@ -74,7 +74,7 @@ export function SeguridadScreen(_: P) {
     {setup ? <Card>
       <Text style={styles.step}>1. Abre Google Authenticator, Authy o 1Password y agrega una cuenta con esta clave:</Text>
       <Text selectable style={styles.secret}>{setup.secret}</Text>
-      <PrimaryButton label="ABRIR MI APP DE AUTENTICACIÓN" onPress={() => void Linking.openURL(setup.otpauthUrl).catch(() => showAlert("Copia la clave", "Escribe la clave manualmente en tu app de autenticación."))} tone="outline" />
+      <PrimaryButton label="Abrir mi app de autenticación" onPress={() => void Linking.openURL(setup.otpauthUrl).catch(() => showAlert("Copia la clave", "Escribe la clave manualmente en tu app de autenticación."))} tone="outline" />
       <Text style={styles.step}>2. Escribe el código de 6 dígitos que muestra la app:</Text>
       <TextField label="Código" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad" placeholder="123456" />
       <PrimaryButton label={busy ? "VERIFICANDO…" : "CONFIRMAR Y ACTIVAR"} onPress={() => void confirm()} disabled={busy || code.length !== 6} />
@@ -83,20 +83,20 @@ export function SeguridadScreen(_: P) {
     {recoveryCodes ? <Card tone="warning">
       <Text style={styles.step}>Guarda estos códigos de recuperación en un lugar seguro (foto, papel o gestor de contraseñas). Cada uno sirve una sola vez si pierdes tu celular. No los volveremos a mostrar.</Text>
       <View style={styles.codes}>{recoveryCodes.map((item) => <Text key={item} selectable style={styles.code}>{item}</Text>)}</View>
-      <PrimaryButton label="YA LOS GUARDÉ" onPress={() => setRecoveryCodes(undefined)} />
+      <PrimaryButton label="Ya los guardé" onPress={() => setRecoveryCodes(undefined)} />
     </Card> : null}
 
     {enabled && !recoveryCodes ? <Card>
       {codesLeft !== undefined ? <InfoRow label="Códigos de recuperación disponibles" value={String(codesLeft)} /> : null}
       <Text style={styles.copy}>Para desactivarla, escribe un código actual de tu app de autenticación.</Text>
       <TextField label="Código actual" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad" placeholder="123456" />
-      <PrimaryButton label="DESACTIVAR" onPress={() => void turnOff()} tone="outline" disabled={busy || code.length !== 6} />
+      <PrimaryButton label="Desactivar" onPress={() => void turnOff()} tone="outline" disabled={busy || code.length !== 6} />
     </Card> : null}
 
     <SectionTitle>Sesiones</SectionTitle>
     <Card>
       <Text style={styles.copy}>¿Perdiste un celular o usaste una computadora ajena? Cierra la sesión en todos los dispositivos.</Text>
-      <PrimaryButton label="CERRAR SESIÓN EN TODOS LOS DISPOSITIVOS" onPress={() => void closeEverywhere()} tone="outline" disabled={busy} />
+      <PrimaryButton label="Cerrar sesión en todos los dispositivos" onPress={() => void closeEverywhere()} tone="outline" disabled={busy} />
     </Card>
 
     <SectionTitle>Actividad reciente</SectionTitle>
@@ -117,12 +117,12 @@ export function SeguridadScreen(_: P) {
 
 const styles = StyleSheet.create({
   copy: { color: theme.colors.muted, lineHeight: 21 },
-  step: { color: theme.colors.text, fontWeight: "700", lineHeight: 21 },
-  secret: { color: theme.colors.primaryText, fontWeight: "900", fontSize: 20, letterSpacing: 2, paddingVertical: 6 },
+  step: { color: theme.colors.text, fontWeight: "600", lineHeight: 21 },
+  secret: { color: theme.colors.primaryText, fontWeight: "700", fontSize: 20, letterSpacing: 2, paddingVertical: 6 },
   codes: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  code: { fontWeight: "900", fontSize: 16, color: theme.colors.text, letterSpacing: 1, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
-  table: { backgroundColor: theme.colors.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
+  code: { fontWeight: "700", fontSize: 16, color: theme.colors.text, letterSpacing: 1, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
+  table: { backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
   row: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-  action: { color: theme.colors.text, fontWeight: "800" },
+  action: { color: theme.colors.text, fontWeight: "600" },
   sub: { color: theme.colors.muted, fontSize: 12.5 }
 });

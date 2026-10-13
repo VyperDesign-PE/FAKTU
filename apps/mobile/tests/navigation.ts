@@ -30,3 +30,11 @@ const missingUsed = [...used].filter((name) => !registered.has(name));
 assert.deepEqual(missingDeclared, [], `Rutas declaradas en types.ts sin registrar en AppRouter: ${missingDeclared.join(", ")}`);
 assert.deepEqual(missingUsed, [], `Destinos usados en pantallas sin registrar en AppRouter: ${missingUsed.join(", ")}`);
 console.log(`MOBILE NAVIGATION: PASS (${registered.size} rutas registradas, ${used.size} destinos usados)`);
+
+// Las URLs de la web (linking) solo pueden apuntar a pantallas registradas.
+const linkingBlock = router.slice(router.indexOf("const linking"));
+const linked = [...linkingBlock.matchAll(/^\s{6}(\w+): "/gm)].map((m) => m[1]);
+const unknownLinked = linked.filter((name) => !registered.has(name));
+assert.deepEqual(unknownLinked, [], `URLs que apuntan a pantallas inexistentes: ${unknownLinked.join(", ")}`);
+assert.ok(linked.length >= 10, "linking debería cubrir las pantallas principales");
+console.log(`MOBILE LINKING: PASS (${linked.length} URLs)`);

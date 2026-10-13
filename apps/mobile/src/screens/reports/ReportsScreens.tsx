@@ -113,7 +113,7 @@ export function CashCloseScreen(_props: P<"CashClose">) {
       {report.rejected.count ? <Card tone="danger"><InfoRow label={`Rechazadas (${report.rejected.count})`} value={money(report.rejected.total)} /><Text style={styles.muted}>No cuentan como venta. Revísalas en el historial.</Text></Card> : null}
     </> : null}
 
-    <PrimaryButton label="ACTUALIZAR" onPress={() => void load()} tone="outline" disabled={loading} />
+    <PrimaryButton label="Actualizar" onPress={() => void load()} tone="outline" disabled={loading} />
     <SectionTitle>Para tu contador</SectionTitle>
     <Card><Text style={styles.muted}>Descarga el registro de ventas de {date.slice(5, 7)}/{date.slice(0, 4)} en formato CSV (se abre en Excel). Incluye boletas, facturas y notas de crédito.</Text></Card>
     <PrimaryButton label={exporting ? "GENERANDO..." : "DESCARGAR REGISTRO DEL MES"} onPress={() => void exportMonth()} disabled={exporting || !online} />
@@ -122,6 +122,6 @@ export function CashCloseScreen(_props: P<"CashClose">) {
 
 const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  big: { fontSize: 32, fontWeight: "900", color: theme.colors.text },
+  big: { fontSize: 32, fontWeight: "700", color: theme.colors.text },
   muted: { color: theme.colors.muted, lineHeight: 20 }
 });

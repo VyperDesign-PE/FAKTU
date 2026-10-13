@@ -33,7 +33,7 @@ export function ProductosScreen({ navigation }: P<"Productos">) {
       navigation={navigation}
       title="Productos y stock"
       subtitle="Tu catálogo para vender rápido. Activa el control de stock y FAKTU descuenta solo cada venta."
-      action={<View style={{ width: 150 }}><PrimaryButton label="＋ NUEVO" onPress={() => navigation.navigate("ProductForm")} /></View>}
+      action={<View style={{ width: 150 }}><PrimaryButton label="＋ Nuevo" onPress={() => navigation.navigate("ProductForm")} /></View>}
     >
       <View style={styles.toolbar}>
         <TextInput value={search} onChangeText={setSearch} placeholder="Buscar producto…" placeholderTextColor={theme.colors.muted} style={styles.search} accessibilityLabel="Buscar producto" />
@@ -145,11 +145,11 @@ export function ProductFormScreen({ navigation, route }: P<"ProductForm">) {
     {track ? <>
       <TextField label={tracked ? "Ingreso de mercadería (+ unidades) o conteo real" : "Stock actual (unidades)"} value={stock} onChangeText={setStock} keyboardType="decimal-pad" placeholder={tracked ? "Ej. 24" : "Ej. 50"} />
       <TextField label="Avísame cuando queden (stock mínimo)" value={minStock} onChangeText={setMinStock} keyboardType="decimal-pad" placeholder="5" />
-      {tracked ? <PrimaryButton label="FIJAR EL STOCK A ESTE CONTEO" onPress={() => void count()} tone="outline" disabled={busy} /> : null}
+      {tracked ? <PrimaryButton label="Fijar el stock a este conteo" onPress={() => void count()} tone="outline" disabled={busy} /> : null}
       <Text style={styles.muted}>Cada venta descuenta el stock y cada anulación o devolución lo repone. Nunca bloqueamos una venta por falta de stock.</Text>
     </> : null}
     <PrimaryButton label={busy ? "GUARDANDO…" : existing && tracked && track ? "GUARDAR E INGRESAR STOCK" : "GUARDAR PRODUCTO"} onPress={() => void save()} disabled={busy} />
-    {existing ? <PrimaryButton label="ELIMINAR PRODUCTO" onPress={() => void remove()} tone="outline" /> : null}
+    {existing ? <PrimaryButton label="Eliminar producto" onPress={() => void remove()} tone="outline" /> : null}
 
     {moves.length ? <>
       <SectionTitle>Movimientos (kardex)</SectionTitle>
@@ -160,15 +160,15 @@ export function ProductFormScreen({ navigation, route }: P<"ProductForm">) {
 
 const styles = StyleSheet.create({
   toolbar: { flexDirection: "row", gap: 10, alignItems: "center", flexWrap: "wrap" },
-  search: { flex: 1, minWidth: 200, minHeight: 46, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
-  table: { backgroundColor: theme.colors.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
+  search: { flex: 1, minWidth: 200, minHeight: 46, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
+  table: { backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, overflow: "hidden" },
   row: { minHeight: 62, paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
-  name: { color: theme.colors.text, fontWeight: "800", fontSize: 15 },
+  name: { color: theme.colors.text, fontWeight: "600", fontSize: 15 },
   muted: { color: theme.colors.muted, lineHeight: 20 },
   pill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: theme.colors.successSoft },
   pillDanger: { backgroundColor: theme.colors.dangerSoft },
   pillWarn: { backgroundColor: theme.colors.warningSoft },
-  pillText: { color: theme.colors.success, fontWeight: "800", fontSize: 12 },
-  chevron: { color: theme.colors.primaryText, fontWeight: "900", fontSize: 20 },
+  pillText: { color: theme.colors.success, fontWeight: "600", fontSize: 12 },
+  chevron: { color: theme.colors.primaryText, fontWeight: "700", fontSize: 20 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
 });

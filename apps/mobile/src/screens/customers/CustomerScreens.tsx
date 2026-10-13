@@ -81,7 +81,7 @@ export function CustomersScreen({ navigation }: P<"Customers">) {
         autoCapitalize="none"
       />
 
-      <PrimaryButton label="＋ NUEVO CLIENTE" onPress={() => navigation.navigate("CustomerForm")} />
+      <PrimaryButton label="＋ Nuevo cliente" onPress={() => navigation.navigate("CustomerForm")} />
 
       {message ? <Card tone={online ? "warning" : "info"}><Text style={styles.helper}>{message}</Text></Card> : null}
       {loading ? <View style={styles.loading}><ActivityIndicator color={theme.colors.primary} /><Text style={styles.helper}>Cargando clientes…</Text></View> : null}
@@ -243,7 +243,7 @@ export function CustomerFormScreen({ navigation, route }: P<"CustomerForm">) {
       </Card>
 
       <PrimaryButton label={saving ? "GUARDANDO…" : "GUARDAR CLIENTE"} onPress={() => void save()} disabled={saving} />
-      <PrimaryButton label="CANCELAR" onPress={() => navigation.goBack()} tone="outline" />
+      <PrimaryButton label="Cancelar" onPress={() => navigation.goBack()} tone="outline" />
     </Screen>
   );
 }
@@ -253,9 +253,9 @@ const styles = StyleSheet.create({
   helper: { color: theme.colors.muted, lineHeight: 20 },
   empty: { color: theme.colors.muted, textAlign: "center" },
   customerHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  customerName: { color: theme.colors.text, fontSize: 16, fontWeight: "900" },
-  document: { color: theme.colors.muted, marginTop: 4, fontSize: 12, fontWeight: "700" },
-  chevron: { color: theme.colors.primaryText, fontSize: 26, fontWeight: "900" },
+  customerName: { color: theme.colors.text, fontSize: 16, fontWeight: "700" },
+  document: { color: theme.colors.muted, marginTop: 4, fontSize: 12, fontWeight: "600" },
+  chevron: { color: theme.colors.primaryText, fontSize: 26, fontWeight: "700" },
   chips: { flexDirection: "row", gap: 8 },
-  error: { color: theme.colors.danger, fontSize: 13, fontWeight: "700", marginTop: -7 }
+  error: { color: theme.colors.danger, fontSize: 13, fontWeight: "600", marginTop: -7 }
 });

@@ -30,6 +30,6 @@ export function BrandLogo({ size = 40, light = false, tagline }: { size?: number
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   mark: { backgroundColor: theme.colors.primary, overflow: "hidden" },
-  word: { fontWeight: "900", letterSpacing: 1.5 },
+  word: { fontWeight: "700", letterSpacing: 1.5 },
   tagline: { color: theme.colors.muted, fontSize: 12, marginTop: -1 }
 });

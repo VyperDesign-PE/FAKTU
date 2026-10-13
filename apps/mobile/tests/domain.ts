@@ -4,6 +4,7 @@ import { quoteTotals } from "../src/domain/pricing";
 import { priceItems } from "../../api/src/modules/receipts/pricing";
 import { BOLETA_IDENTIFICATION_THRESHOLD_PEN, isValidDni, isValidRuc, mustIdentifyCustomer } from "../src/domain/documentRules";
 import { BOLETA_IDENTIFICATION_THRESHOLD_PEN as SERVER_THRESHOLD, assertDocumentRules, DocumentRuleError } from "../../api/src/modules/receipts/documentRules";
+import { sentenceCase } from "../src/domain/text";
 import { localStatusInfo, remoteStatusInfo } from "../src/domain/receiptStatus";
 
 type R = Parameters<typeof effectiveSales>[0][number];
@@ -66,5 +67,14 @@ test("umbral de identificación y validación DNI/RUC coinciden con el servidor"
   assert.equal(mustIdentifyCustomer({ documentType: "BOLETA", total: 1, paymentMethod: "CREDITO" }), true);
   assert.ok(isValidDni("12345678") && !isValidDni("1234567"));
   assert.ok(isValidRuc("20123456789") && !isValidRuc("30123456789") && !isValidRuc("2012345678"));
+});
+test("etiquetas en mayúsculas pasan a formato oración sin romper siglas", () => {
+  assert.equal(sentenceCase("GUARDAR PRODUCTO"), "Guardar producto");
+  assert.equal(sentenceCase("COBRAR S/ 12.50"), "Cobrar S/ 12.50");
+  assert.equal(sentenceCase("CONSULTAR ESTADO EN SUNAT"), "Consultar estado en SUNAT");
+  assert.equal(sentenceCase("RECORDAR WHATSAPP"), "Recordar WhatsApp");
+  assert.equal(sentenceCase("+ AGREGAR PRODUCTO / SERVICIO"), "+ Agregar producto / servicio");
+  assert.equal(sentenceCase("Ver detalle"), "Ver detalle");
+  assert.equal(sentenceCase("DNI"), "DNI");
 });
 console.log(`MOBILE DOMAIN: ${passed} PASS`);

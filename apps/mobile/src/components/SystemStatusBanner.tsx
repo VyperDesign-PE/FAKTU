@@ -1,33 +1,33 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
+import { Icon, type IconName } from "./Icon";
 
 type Props = { online: boolean; pendingCount: number; onPress: () => void };
 
+/** Aviso de conexión y de comprobantes por enviar. Solo aparece cuando hay algo que decir (sin conexión o pendientes). */
 export function SystemStatusBanner({ online, pendingCount, onPress }: Props) {
-  const mode = !online ? "offline" : pendingCount > 0 ? "pending" : "ok";
-  const copy = {
-    ok: { icon: "✓", title: "Todo funciona correctamente", body: "Puedes emitir tus comprobantes sin problemas." },
-    offline: { icon: "⌁", title: "Sin Internet", body: "Puedes seguir vendiendo. Tus ventas se guardarán." },
-    pending: { icon: "◷", title: `Tienes ${pendingCount} comprobante${pendingCount === 1 ? "" : "s"} pendiente${pendingCount === 1 ? "" : "s"}`, body: "Los enviaremos automáticamente." }
-  }[mode];
+  if (online && pendingCount === 0) return null;
+  const mode = !online ? "offline" : "pending";
+  const copy: { icon: IconName; title: string; body: string } = !online
+    ? { icon: "wifi", title: "Sin conexión a Internet", body: "Puedes seguir vendiendo: las ventas se guardan en este dispositivo y se envían al volver la conexión." }
+    : { icon: "clock", title: `${pendingCount} comprobante${pendingCount === 1 ? "" : "s"} por enviar`, body: "Se envían automáticamente. Toca para ver el detalle." };
 
   return (
-    <Pressable onPress={onPress} style={[styles.box, styles[mode]]}>
-      <View style={styles.icon}><Text style={styles.iconText}>{copy.icon}</Text></View>
-      <View style={{ flex: 1 }}><Text style={styles.title}>{copy.title}</Text><Text style={styles.body}>{copy.body}</Text></View>
-      <Text style={styles.arrow}>›</Text>
+    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.box, styles[mode]]}>
+      <Icon name={copy.icon} size={20} color={theme.colors.warning} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.title}>{copy.title}</Text>
+        <Text style={styles.body}>{copy.body}</Text>
+      </View>
+      <Icon name="chevron" size={18} color={theme.colors.muted} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  box: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, borderWidth: 1 },
-  ok: { backgroundColor: theme.colors.successSoft, borderColor: theme.colors.successBorder },
+  box: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, minHeight: 56 },
   offline: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
   pending: { backgroundColor: theme.colors.warningSoft, borderColor: theme.colors.warningBorder },
-  icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: theme.colors.surface, alignItems: "center", justifyContent: "center" },
-  iconText: { color: theme.colors.text, fontSize: 20, fontWeight: "800" },
-  title: { fontWeight: "800", fontSize: 15, color: theme.colors.text },
-  body: { color: theme.colors.muted, marginTop: 3, lineHeight: 18 },
-  arrow: { fontSize: 28, color: theme.colors.muted }
+  title: { fontWeight: "600", fontSize: 14, color: theme.colors.text },
+  body: { color: theme.colors.muted, marginTop: 2, lineHeight: 18, fontSize: 13 }
 });

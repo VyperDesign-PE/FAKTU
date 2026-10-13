@@ -1,82 +1,81 @@
 /**
- * Paleta de FAKTU (identidad "Ágil": cobalto + menta sobre fondo claro).
+ * Paleta de FAKTU: identidad sobria (azul marino y grises azulados, sin colores de acento en la interfaz).
  * Única fuente de colores: `theme.ts` la usa en nativo y `scripts/sync-palette.ts`
  * la vuelca como variables CSS en public/index.html para la web.
  * Contrastes mínimos (AA) verificados en tests/palette.ts.
  */
 export const light = {
-  background: "#F5F7FC",
+  background: "#F3F5F8",
   surface: "#FFFFFF",
-  hover: "#EFF3FF",
-  tableHead: "#F1F4FB",
+  hover: "#F7F9FC",
+  tableHead: "#F1F4F8",
   /** Color de marca: botones, enlaces, selección. */
-  primary: "#2547A8",
+  primary: "#1F4B99",
   /** Texto y enlaces de marca sobre superficies (en oscuro es más claro que `primary`). */
-  primaryText: "#2547A8",
-  primaryDark: "#1B3787",
-  primarySoft: "#E3EAFB",
-  /** Fondo del menú lateral, barra superior y tarjeta destacada. */
-  ink: "#101A3D",
-  inkSoft: "#1A2757",
-  /** Acento de la marca (punto del isotipo, detalles). Decorativo: nunca transmite un estado. */
+  primaryText: "#1F4B99",
+  primaryDark: "#173B7A",
+  primarySoft: "#E6EDF8",
+  /** Fondo oscuro de marca: menú lateral y barra superior móvil. */
+  ink: "#0F1B33",
+  inkSoft: "#1A2A47",
+  /** Acento de la marca (punto del isotipo). Decorativo: no se usa en la interfaz ni significa un estado. */
   mint: "#19C58B",
   mintSoft: "#DDF4E8",
-  /** Texto y detalles sobre el fondo oscuro de marca (menú, tarjeta destacada). */
-  onInkMuted: "#C5CEF0",
-  onInkAccent: "#7C98F5",
+  /** Texto y detalles sobre el fondo oscuro de marca. */
+  onInkMuted: "#B9C4D9",
+  onInkAccent: "#8FB0EA",
   onInkWarning: "#F5B544",
   /** Estados: siempre acompañados de texto o icono. Separados del color de marca. */
-  success: "#0F7A3E",
-  successSoft: "#EAF7EF",
-  successBorder: "#B5DFC4",
+  success: "#17703F",
+  successSoft: "#ECF6F0",
+  successBorder: "#BFDCCB",
   warning: "#8A5300",
-  warningSoft: "#FFF6E0",
-  warningBorder: "#EBCB85",
+  warningSoft: "#FBF4E4",
+  warningBorder: "#E6CE94",
   danger: "#B42318",
-  dangerSoft: "#FFF1F0",
-  dangerBorder: "#F2B8B5",
-  infoSoft: "#EEF3FF",
-  infoBorder: "#C7D4F7",
-  mutedSoft: "#ECEFF6",
-  text: "#16203F",
-  muted: "#55607F",
-  border: "#DDE2EE",
-  blue: "#2547A8"
+  dangerSoft: "#FDF1F0",
+  dangerBorder: "#EFC1BD",
+  infoSoft: "#EEF3FA",
+  infoBorder: "#C9D6EA",
+  mutedSoft: "#EBEEF3",
+  text: "#1A2332",
+  muted: "#586374",
+  border: "#D8DEE8",
+  blue: "#1F4B99"
 };
 
 export type ThemeColors = typeof light;
 
 export const dark: ThemeColors = {
-  background: "#0A1127",
-  surface: "#121B38",
-  hover: "#1A2548",
-  tableHead: "#162042",
-  primary: "#4568E0",
-  primaryText: "#8FA8FF",
-  primaryDark: "#3752BD",
-  primarySoft: "#1B2B5E",
-  ink: "#0D1531",
-  inkSoft: "#1A2757",
+  background: "#0C1320",
+  surface: "#131C2E",
+  hover: "#192438",
+  tableHead: "#16203A",
+  primary: "#3A66BE",
+  primaryText: "#8FB0EA",
+  primaryDark: "#2F55A0",
+  primarySoft: "#1A2B4D",
+  ink: "#0A101D",
+  inkSoft: "#172036",
   mint: "#19C58B",
   mintSoft: "#123428",
-  /** Texto y detalles sobre el fondo oscuro de marca (menú, tarjeta destacada). */
-  onInkMuted: "#C5CEF0",
-  onInkAccent: "#7C98F5",
+  onInkMuted: "#B9C4D9",
+  onInkAccent: "#8FB0EA",
   onInkWarning: "#F5B544",
-  success: "#4CD98F",
-  successSoft: "#10301F",
-  successBorder: "#1F5236",
-  warning: "#F5B544",
-  warningSoft: "#33280E",
-  warningBorder: "#5C4818",
-  danger: "#FF8A80",
-  dangerSoft: "#3A1815",
-  dangerBorder: "#6A2B26",
-  infoSoft: "#16255A",
-  infoBorder: "#2C3F85",
-  mutedSoft: "#1F2A52",
-  text: "#EDF0FB",
-  muted: "#A3ACCF",
-  border: "#27325F",
-  blue: "#8FA8FF"
+  success: "#4CC38A",
+  successSoft: "#10281C",
+  successBorder: "#1F4A33",
+  warning: "#F0B24A",
+  warningSoft: "#2E2410",
+  warningBorder: "#584318",
+  danger: "#F2877E",
+  dangerSoft: "#341815",
+  dangerBorder: "#642B26",
+  infoSoft: "#16233F",
+  infoBorder: "#2B3E66",
+  mutedSoft: "#1B2740",
+  text: "#E6EAF2",
+  muted: "#9AA6BA",
+  border: "#26324A",
+  blue: "#8FB0EA"
 };
