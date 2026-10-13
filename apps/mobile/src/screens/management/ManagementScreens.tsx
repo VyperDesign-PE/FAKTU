@@ -268,16 +268,17 @@ export function BillingSettingsScreen({ navigation }: P<"BillingSettings">) {
 
     <SectionTitle>Proveedor</SectionTitle>
     <View style={styles.chipWrap}>
-      {providers.filter((item) => ["mock", "apisperu", "nubefact", "efact", "senda"].includes(item.code)).map((item) => (
+      {providers.filter((item) => item.canIssue !== false).map((item) => (
         <Chip key={item.code} label={item.name} active={providerCode === item.code} onPress={() => setProviderCode(item.code)} />
       ))}
     </View>
     {selected ? <Card tone="info"><Text style={styles.body}>{selected.note}</Text></Card> : null}
+    {providers.some((item) => item.canIssue === false) ? <Text style={styles.body}>No disponibles todavía: {providers.filter((item) => item.canIssue === false).map((item) => item.name).join(", ")} (pendientes de homologación).</Text> : null}
 
     <SectionTitle>Ambiente</SectionTitle>
     <View style={styles.chipWrap}>
       <Chip label="Pruebas / Sandbox" active={environment === "sandbox"} onPress={() => setEnvironment("sandbox")} />
-      <Chip label="Produccion" active={environment === "production"} onPress={() => setEnvironment("production")} />
+      <Chip label="Producción" active={environment === "production"} onPress={() => setEnvironment("production")} />
     </View>
 
     <TextField

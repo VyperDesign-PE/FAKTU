@@ -419,7 +419,7 @@ export async function getSubscription() {
 
 export type BillingProviderCode = "mock" | "apisperu" | "nubefact" | "efact" | "senda" | "facturadorpe" | "cpeapi" | "external";
 export type BillingEnvironment = "sandbox" | "production";
-export type BillingProviderOption = { code: BillingProviderCode; name: string; note: string };
+export type BillingProviderOption = { code: BillingProviderCode; name: string; note: string; /** false = solo sonda de salud, aún no emite. */ canIssue?: boolean };
 export type BillingSettings = {
   tenantId: string;
   providerCode: BillingProviderCode;
