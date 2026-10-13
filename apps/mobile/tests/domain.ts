@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { attentionCount, awaitingSendCount, effectiveSales, todaySales } from "../src/domain/receiptMetrics";
 import { quoteTotals } from "../src/domain/pricing";
 import { priceItems } from "../../api/src/modules/receipts/pricing";
+import { BOLETA_IDENTIFICATION_THRESHOLD_PEN, isValidDni, isValidRuc, mustIdentifyCustomer } from "../src/domain/documentRules";
+import { BOLETA_IDENTIFICATION_THRESHOLD_PEN as SERVER_THRESHOLD, assertDocumentRules, DocumentRuleError } from "../../api/src/modules/receipts/documentRules";
 import { localStatusInfo, remoteStatusInfo } from "../src/domain/receiptStatus";
 
 type R = Parameters<typeof effectiveSales>[0][number];
@@ -51,5 +53,18 @@ test("cotización del celular = pricing.ts del servidor (centavo a centavo)", ()
 test("el IGV mostrado no usa el redondeo global antiguo", () => {
   const items = [{ quantity: 1, unitPrice: 0.05 }, { quantity: 1, unitPrice: 0.05 }, { quantity: 1, unitPrice: 0.05 }];
   assert.equal(quoteTotals(items).igv, priceItems(items).igv);
+});
+test("umbral de identificación y validación DNI/RUC coinciden con el servidor", () => {
+  assert.equal(BOLETA_IDENTIFICATION_THRESHOLD_PEN, SERVER_THRESHOLD);
+  const customerOk = { documentType: "DNI" as const, documentNumber: "12345678", name: "X" };
+  assert.doesNotThrow(() => assertDocumentRules({ documentType: "BOLETA", total: SERVER_THRESHOLD, customer: undefined }));
+  assert.throws(() => assertDocumentRules({ documentType: "BOLETA", total: SERVER_THRESHOLD + 0.01, customer: undefined }), DocumentRuleError);
+  assert.doesNotThrow(() => assertDocumentRules({ documentType: "BOLETA", total: SERVER_THRESHOLD + 0.01, customer: customerOk }));
+  assert.equal(mustIdentifyCustomer({ documentType: "BOLETA", total: SERVER_THRESHOLD }), false);
+  assert.equal(mustIdentifyCustomer({ documentType: "BOLETA", total: SERVER_THRESHOLD + 0.01 }), true);
+  assert.equal(mustIdentifyCustomer({ documentType: "FACTURA", total: 1 }), true);
+  assert.equal(mustIdentifyCustomer({ documentType: "BOLETA", total: 1, paymentMethod: "CREDITO" }), true);
+  assert.ok(isValidDni("12345678") && !isValidDni("1234567"));
+  assert.ok(isValidRuc("20123456789") && !isValidRuc("30123456789") && !isValidRuc("2012345678"));
 });
 console.log(`MOBILE DOMAIN: ${passed} PASS`);

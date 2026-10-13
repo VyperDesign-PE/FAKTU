@@ -1,4 +1,5 @@
 import type { AuthSession } from "../auth/types";
+import { DOCUMENT_LENGTH } from "../domain/documentRules";
 import type { BusinessProfile, PaymentMethod, PendingReceipt, Product } from "../domain/types";
 import { clearSession, getAccessToken, loadSession, notifySessionInvalid, saveSession } from "../storage/session";
 
@@ -165,8 +166,7 @@ export type CustomerLookupResult = {
 
 export async function consultarDocumentoCliente(tipoDoc: "DNI" | "RUC", numero: string) {
   const clean = numero.replace(/\D/g, "");
-  const expectedLength = tipoDoc === "DNI" ? 8 : 11;
-  if (clean.length !== expectedLength) {
+  if (clean.length !== DOCUMENT_LENGTH[tipoDoc]) {
     throw new Error(tipoDoc === "DNI" ? "El DNI debe tener 8 dígitos." : "El RUC debe tener 11 dígitos.");
   }
 
@@ -240,6 +240,7 @@ export async function updateRemoteBusiness(profile: BusinessProfile) {
       businessName: profile.businessName,
       tradeName: profile.tradeName,
       address: profile.address,
+      ...(profile.ubigeo && /^d{6}$/.test(profile.ubigeo) ? { ubigeo: profile.ubigeo } : {}),
       phone: profile.phone,
       taxpayerStatus: profile.taxpayerStatus,
       // Un dispositivo nuevo (perfil local vacío) nunca debe "des-completar" el alta hecha en otro.

@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "web": "expo start --web",
     "build:web": "expo export --platform web --output-dir dist-web",
-    "test:domain": "tsx tests/domain.ts && tsx tests/navigation.ts && tsx tests/palette.ts",
+    "test:domain": "tsx tests/domain.ts && tsx tests/navigation.ts && tsx tests/palette.ts && tsx --require ./tests/stubs/register.cjs tests/queue.ts",
     "sync:palette": "tsx scripts/sync-palette.ts",
     "icons": "tsx scripts/generate-icons.ts"
   },

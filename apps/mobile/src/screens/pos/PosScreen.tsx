@@ -10,6 +10,7 @@ import { useApp } from "../../context/AppContext";
 import { PAYMENT_METHODS, type Customer, type PaymentMethod, type Product } from "../../domain/types";
 import { theme } from "../../theme";
 import { quoteTotals } from "../../domain/pricing";
+import { mustIdentifyCustomer } from "../../domain/documentRules";
 
 type Props = NativeStackScreenProps<RootStackParamList, "POSVenta">;
 
@@ -45,7 +46,7 @@ export function PosScreen({ navigation }: Props) {
   const isFactura = draft.documentType === "FACTURA";
   const isCredit = draft.paymentMethod === "CREDITO";
   const isCash = draft.paymentMethod === "EFECTIVO";
-  const mustIdentify = isFactura || isCredit || total > 700;
+  const mustIdentify = mustIdentifyCustomer({ documentType: draft.documentType, total, paymentMethod: draft.paymentMethod });
   const receivedAmount = received.trim() ? Number(received.replace(",", ".")) : undefined;
   const change = isCash && receivedAmount !== undefined && Number.isFinite(receivedAmount) ? receivedAmount - total : undefined;
   const effectiveMode = isFactura ? "RUC" : mode;

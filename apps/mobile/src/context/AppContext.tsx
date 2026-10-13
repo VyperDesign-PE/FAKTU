@@ -5,7 +5,7 @@ import type { BusinessProfile, Customer, DocumentType, PaymentMethod, PendingRec
 import { enqueueReceipt, getQueue } from "../storage/receiptQueue";
 import { syncPendingReceipts } from "../services/sync";
 import { loadProfile, saveProfile } from "../storage/profile";
-import { loadCatalog, saveCatalog } from "../storage/catalog";
+import { loadCatalog, loadPendingDeletes, saveCatalog, savePendingDeletes } from "../storage/catalog";
 import { quoteTotals } from "../domain/pricing";
 import { listCachedCustomers } from "../storage/customerCache";
 import { useAuth } from "./AuthContext";
@@ -121,7 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let active = true;
     setHydrated(false);
 
-    Promise.all([loadProfile(scope), loadCatalog(scope), getQueue(scope)]).then(async ([localProfile, localCatalog, localQueue]) => {
+    Promise.all([loadProfile(scope), loadCatalog(scope), getQueue(scope), loadPendingDeletes(scope)]).then(async ([localProfile, localCatalog, localQueue, pendingDeletes]) => {
       if (!active) return;
       setProfile(localProfile);
       setCatalog(localCatalog);
@@ -132,7 +132,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (user) {
         try {
           // Subimos el catálogo local primero: así productos creados offline sobreviven al cambio de dispositivo.
-          await Promise.all(localCatalog.map((product) => upsertRemoteProduct(product)));
+          const stillPending: string[] = [];
+          for (const id of pendingDeletes) await deleteRemoteProduct(id).catch(() => stillPending.push(id));
+          await savePendingDeletes(scope, stillPending);
+          await Promise.all(localCatalog.filter((product) => !stillPending.includes(product.id)).map((product) => upsertRemoteProduct(product)));
           await syncCachedCustomers();
           const [remoteProfile, remoteCatalog, remoteHistory] = await Promise.all([
             getRemoteBusiness(),
@@ -145,9 +148,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setProfile(mergedProfile);
           await saveProfile(scope, mergedProfile);
 
-          if (remoteCatalog.length) {
-            setCatalog(remoteCatalog);
-            await saveCatalog(scope, remoteCatalog);
+          const visibleCatalog = remoteCatalog.filter((product) => !stillPending.includes(product.id));
+          if (visibleCatalog.length) {
+            setCatalog(visibleCatalog);
+            await saveCatalog(scope, visibleCatalog);
           }
           setHistory(remoteHistory);
         } catch {
@@ -155,6 +159,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      if (active) setHydrated(true);
+    }).catch(() => {
+      // Almacenamiento local ilegible: se arranca con datos vacíos en vez de dejar la app cargando para siempre.
       if (active) setHydrated(true);
     });
 
@@ -164,8 +171,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (connected && user) {
         // Sincroniza también cambios hechos offline en perfil y catálogo antes de procesar comprobantes.
         try {
-          const [savedProfile, savedCatalog] = await Promise.all([loadProfile(scope), loadCatalog(scope)]);
-          await Promise.all(savedCatalog.map((product) => upsertRemoteProduct(product)));
+          const [savedProfile, savedCatalog, deletes] = await Promise.all([loadProfile(scope), loadCatalog(scope), loadPendingDeletes(scope)]);
+          const stillPending: string[] = [];
+          for (const id of deletes) await deleteRemoteProduct(id).catch(() => stillPending.push(id));
+          await savePendingDeletes(scope, stillPending);
+          await Promise.all(savedCatalog.filter((product) => !stillPending.includes(product.id)).map((product) => upsertRemoteProduct(product)));
           await updateRemoteBusiness(savedProfile);
           await syncCachedCustomers();
         } catch {
@@ -212,7 +222,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const next = catalog.filter((item) => item.id !== id);
     setCatalog(next);
     await saveCatalog(scope, next);
-    if (online && user) await deleteRemoteProduct(id);
+    if (!user) return;
+    try {
+      if (!online) throw new Error("offline");
+      await deleteRemoteProduct(id);
+    } catch {
+      await savePendingDeletes(scope, [...(await loadPendingDeletes(scope)), id]);
+    }
   }
 
   function addItem(product: Product) {
@@ -259,9 +275,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error("Debes iniciar sesión para emitir comprobantes.");
     // Mismo redondeo que el servidor (ver domain/pricing.ts).
     const { total } = quoteTotals(sale.items);
+    const clientTransactionId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 6)}`;
     const receipt: PendingReceipt = {
-      clientTransactionId: `client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      temporaryNumber: `VT-${Date.now().toString().slice(-6)}`,
+      clientTransactionId,
+      temporaryNumber: `VT-${clientTransactionId.slice(-6).toUpperCase()}`,
       createdAt: new Date().toISOString(),
       documentType: sale.documentType,
       items: sale.items,
@@ -286,7 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt,
     setProfilePatch, completeOnboarding, addProductToCatalog, removeProductFromCatalog, refreshCatalog, addItem, setItemQuantity,
     removeItem, setDocumentType, setCustomer, setPayment, resetDraft, createReceipt, refreshQueue, refreshHistory, syncNow
-  }), [hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt, refreshQueue, refreshHistory, syncNow]);
+  }), [hydrated, online, queue, history, pendingCount, profile, catalog, draft, lastReceipt, refreshQueue, refreshHistory, syncNow, user, scope]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

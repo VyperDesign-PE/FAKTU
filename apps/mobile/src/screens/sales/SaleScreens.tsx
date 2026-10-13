@@ -10,6 +10,8 @@ import { PAYMENT_METHODS, type Customer, type PaymentMethod } from "../../domain
 import { createReceiptSharePackage, type ReceiptSharePackage } from "../../services/api";
 import { theme } from "../../theme";
 import { quoteTotals } from "../../domain/pricing";
+import { localStatusInfo } from "../../domain/receiptStatus";
+import { DOCUMENT_LENGTH, mustIdentifyCustomer } from "../../domain/documentRules";
 import { shareLink, showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
@@ -89,7 +91,7 @@ export function DocumentTypeScreen({ navigation }: P<"DocumentType">) {
 export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
   const { draft, setCustomer, online } = useApp();
   const total = totalOf(draft.items);
-  const mustIdentify = draft.documentType === "FACTURA" || total > 700;
+  const mustIdentify = mustIdentifyCustomer({ documentType: draft.documentType, total, paymentMethod: draft.paymentMethod });
   const [mode, setMode] = useState<"NONE" | "DNI" | "RUC">(draft.documentType === "FACTURA" ? "RUC" : "NONE");
   const [number, setNumber] = useState(draft.customer?.documentNumber ?? "");
   const [name, setName] = useState(draft.customer?.name ?? "");
@@ -111,7 +113,7 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
 
     let customer: Customer | undefined;
     if (mode !== "NONE") {
-      const expectedLength = mode === "DNI" ? 8 : 11;
+      const expectedLength = DOCUMENT_LENGTH[mode];
       if (number.length !== expectedLength) return showAlert("Documento incompleto", mode === "DNI" ? "Ingresa los 8 dígitos del DNI." : "Ingresa los 11 dígitos del RUC.");
       if (!name.trim()) return showAlert("Falta el nombre", "Busca el documento o escribe el nombre manualmente.");
       customer = { documentType: mode, documentNumber: number, name: name.trim(), ...(address.trim() ? { address: address.trim() } : {}) };
@@ -198,8 +200,8 @@ export function EmissionResultScreen({ navigation }: P<"EmissionResult">) {
   const current = queue.find((r) => r.clientTransactionId === lastReceipt?.clientTransactionId) ?? lastReceipt;
   const accepted = current?.status === "ACCEPTED";
   const rejected = current?.status === "REJECTED";
-  const title = accepted ? (current?.testMode ? "¡Venta registrada en modo pruebas!" : "¡Comprobante emitido!") : rejected ? "Comprobante rechazado" : "Venta registrada";
-  const subtitle = accepted ? (current?.testMode ? "Este comprobante es de prueba y no tiene validez ante SUNAT." : "SUNAT aceptó el comprobante.") : rejected ? "Revisa el motivo y registra la venta nuevamente." : "El comprobante se está procesando.";
+  const title = accepted ? (current?.testMode ? "¡Venta registrada en modo pruebas!" : "¡Comprobante emitido!") : rejected ? "Comprobante rechazado" : "Venta guardada";
+  const subtitle = accepted ? (current?.testMode ? "Este comprobante es de prueba y no tiene validez ante SUNAT." : "SUNAT aceptó el comprobante.") : rejected ? "Revisa el motivo y registra la venta nuevamente." : localStatusInfo(current?.status ?? "PENDING").description;
   return <Screen title={title} subtitle={subtitle}>
     <View style={styles.resultIcon}><Text style={styles.resultCheck}>{accepted ? "✓" : rejected ? "✕" : "…"}</Text></View>
     <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} />{current?.paymentMethod ? <InfoRow label="Pago" value={PAYMENT_METHODS.find((m) => m.value === current.paymentMethod)?.label ?? current.paymentMethod} /> : null}{current?.amountReceived !== undefined ? <InfoRow label="Vuelto" value={`S/ ${(current.amountReceived - current.total).toFixed(2)}`} /> : null}</Card>

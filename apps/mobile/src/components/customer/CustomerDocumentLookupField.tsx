@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DOCUMENT_LENGTH } from "../../domain/documentRules";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { consultarDocumentoCliente, type CustomerLookupResult } from "../../services/api";
 import { theme } from "../../theme";
@@ -14,7 +15,7 @@ type Props = {
   autoLookup?: boolean;
 };
 
-const EXPECTED_LENGTH = { DNI: 8, RUC: 11 } as const;
+const EXPECTED_LENGTH = DOCUMENT_LENGTH;
 
 function sourceLabel(result?: CustomerLookupResult) {
   if (!result) return undefined;
