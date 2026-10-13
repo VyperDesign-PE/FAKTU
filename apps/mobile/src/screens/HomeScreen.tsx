@@ -4,18 +4,14 @@ import type { RootStackParamList } from "../navigation/types";
 import { SystemStatusBanner } from "../components/SystemStatusBanner";
 import { useApp } from "../context/AppContext";
 import { theme } from "../theme";
+import { effectiveSales, todaySales } from "../domain/receiptMetrics";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
 export function HomeScreen({ navigation }: Props) {
   const { online, pendingCount, profile, queue, history, resetDraft } = useApp();
   const now = new Date();
-  const todayAccepted = history.filter((r) => {
-    if (r.status !== "ACCEPTED") return false;
-    const date = new Date(r.issueDate);
-    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
-  });
-  const todayTotal = todayAccepted.reduce((sum, r) => sum + r.total, 0);
+  const today = todaySales(history, now);
 
   function startSale() {
     resetDraft();
@@ -33,7 +29,7 @@ export function HomeScreen({ navigation }: Props) {
         <MenuCard title="CLIENTES" subtitle="Datos del cliente" onPress={() => navigation.navigate("Customers")} />
         <MenuCard title="MÁS" subtitle="Negocio y ayuda" onPress={() => navigation.navigate("Business")} />
       </View>
-      <View style={styles.summary}><Text style={styles.summaryTitle}>Resumen de hoy</Text><Text style={styles.muted}>Total aceptado en esta versión de prueba</Text><Text style={styles.total}>S/ {todayTotal.toFixed(2)}</Text><View style={styles.summaryRow}><Metric value={String(todayAccepted.length)} label="Ventas hoy" /><Metric value={String(history.filter((r) => r.status === "ACCEPTED").length)} label="Aceptados" /><Metric value={String(pendingCount)} label="Pendientes" /></View></View>
+      <View style={styles.summary}><Text style={styles.summaryTitle}>Resumen de hoy</Text><Text style={styles.muted}>Ventas vigentes de hoy (sin anuladas ni notas)</Text><Text style={styles.total}>S/ {today.total.toFixed(2)}</Text><View style={styles.summaryRow}><Metric value={String(today.count)} label="Ventas hoy" /><Metric value={String(effectiveSales(history).length)} label="Aceptados" /><Metric value={String(pendingCount)} label="Pendientes" /></View></View>
     </ScrollView>
   );
 }
@@ -43,7 +39,7 @@ function Metric({ value, label }: { value: string; label: string }) { return <Vi
 
 const styles = StyleSheet.create({
   page: { padding: 18, gap: 16, backgroundColor: theme.colors.background, flexGrow: 1 }, header: { paddingTop: 10, paddingBottom: 2 }, business: { fontSize: 18, fontWeight: "900", color: theme.colors.text }, ruc: { color: theme.colors.muted, marginTop: 2 },
-  saleButton: { backgroundColor: theme.colors.primary, padding: 24, borderRadius: 20, alignItems: "center" }, salePlus: { color: "white", fontSize: 28, fontWeight: "800" }, saleTitle: { color: "white", fontWeight: "900", fontSize: 20 }, saleSubtitle: { color: "#EAE2FF", marginTop: 4 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, card: { width: "48%", minHeight: 105, backgroundColor: theme.colors.surface, borderRadius: 18, padding: 16, justifyContent: "center", borderWidth: 1, borderColor: theme.colors.border }, cardTitle: { fontWeight: "900", color: "#263159", lineHeight: 20 }, cardSub: { color: theme.colors.muted, marginTop: 5 },
-  summary: { backgroundColor: theme.colors.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: theme.colors.border }, summaryTitle: { fontSize: 17, fontWeight: "900", color: theme.colors.text, marginBottom: 14 }, muted: { color: theme.colors.muted, fontSize: 12 }, total: { color: theme.colors.success, fontSize: 30, fontWeight: "900", marginVertical: 4 }, summaryRow: { flexDirection: "row", marginTop: 18, paddingTop: 15, borderTopWidth: 1, borderTopColor: "#EEEFF3" }, metricValue: { fontWeight: "900", color: "#20273B", marginBottom: 3 }
+  saleButton: { backgroundColor: theme.colors.primary, padding: 24, borderRadius: 20, alignItems: "center" }, salePlus: { color: "white", fontSize: 28, fontWeight: "800" }, saleTitle: { color: "white", fontWeight: "900", fontSize: 20 }, saleSubtitle: { color: theme.colors.primarySoft, marginTop: 4 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, card: { width: "48%", minHeight: 105, backgroundColor: theme.colors.surface, borderRadius: 18, padding: 16, justifyContent: "center", borderWidth: 1, borderColor: theme.colors.border }, cardTitle: { fontWeight: "900", color: theme.colors.text, lineHeight: 20 }, cardSub: { color: theme.colors.muted, marginTop: 5 },
+  summary: { backgroundColor: theme.colors.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: theme.colors.border }, summaryTitle: { fontSize: 17, fontWeight: "900", color: theme.colors.text, marginBottom: 14 }, muted: { color: theme.colors.muted, fontSize: 12 }, total: { color: theme.colors.success, fontSize: 30, fontWeight: "900", marginVertical: 4 }, summaryRow: { flexDirection: "row", marginTop: 18, paddingTop: 15, borderTopWidth: 1, borderTopColor: theme.colors.mutedSoft }, metricValue: { fontWeight: "900", color: theme.colors.text, marginBottom: 3 }
 });

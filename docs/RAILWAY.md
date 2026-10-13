@@ -15,7 +15,7 @@ El plan Free (US$ 1/mes de crédito) no alcanza para tener la app y la base ence
 ## Paso a paso (≈ 10 minutos)
 
 1. Entra a https://railway.com con tu cuenta de GitHub.
-2. **New Project → Deploy from GitHub repo** → `VyperDesign-PE/FAKTU`. En *Settings → Source* elige la rama `faktu-0.13-estabilizacion` (o `main` cuando se fusione). Railway detecta `railway.toml` y construye con el Dockerfile.
+2. **New Project → Deploy from GitHub repo** → `VyperDesign-PE/FAKTU`. En *Settings → Source* elige la rama que quieras desplegar (por defecto `main`): cada push a esa rama redespliega. Railway detecta `railway.toml` y construye con el Dockerfile.
 3. En el mismo proyecto: **New → Database → PostgreSQL**.
 4. En el servicio FAKTU → **Variables**, agrega:
 

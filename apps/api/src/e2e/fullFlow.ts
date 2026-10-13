@@ -102,6 +102,16 @@ async function main() {
   assert.equal(nubefactSettings.credentialConfigured, true);
   const connection = await request<{ ok: boolean }>("/v1/billing/test-connection", { method: "POST" }, tokenA);
   assert.equal(connection.ok, true, "Nubefact connection test must pass");
+  // Proveedores que solo tienen sonda de salud no pueden elegirse como emisor.
+  const efactAttempt = await fetch(`${apiBase}/v1/billing/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenA}` },
+    body: JSON.stringify({ providerCode: "efact", environment: "sandbox" })
+  });
+  assert.equal(efactAttempt.status, 409, "Efact todavía no puede emitir");
+  const providerList = await request<{ providers: Array<{ code: string; canIssue: boolean }> }>("/v1/billing/providers", {}, tokenA);
+  assert.equal(providerList.providers.find((item) => item.code === "efact")?.canIssue, false);
+  assert.equal(providerList.providers.find((item) => item.code === "nubefact")?.canIssue, true);
 
   log("Validating RUC lookup from local SUNAT registry");
   const taxpayer = await request<{ ruc: string; businessName: string; source: string }>(`/v1/taxpayers/${E2E_RUC}`, {}, tokenA);
@@ -727,6 +737,8 @@ async function main() {
   const audited = await request<Array<{ action: string }>>("/v1/audit", {}, tokenB);
   assert.ok(audited.some((row) => row.action === "RECEIPT_CREATE"), "Receipt creation is audited");
   assert.ok(audited.some((row) => row.action === "STOCK_ADJUST") && audited.some((row) => row.action === "RECEIVABLE_PAYMENT"));
+  const auditedA = await request<Array<{ action: string }>>("/v1/audit", {}, tokenA);
+  assert.ok(auditedA.some((row) => row.action === "BILLING_TEST_CONNECTION"), "La prueba de conexión del proveedor queda auditada");
   await assert.rejects(() => sql`delete from audit_log`, /de solo agregado/, "Audit log is append-only");
 
   const health = await fetch(`${apiBase}/health`);

@@ -5,9 +5,10 @@
  * ventas que se sincronizan después. Solo guarda en caché la aplicación
  * (HTML, JS, íconos); NUNCA respuestas de la API ni comprobantes.
  */
-const CACHE = "faktu-app-v1";
+// Subir este número al cambiar iconos, manifest u otros archivos sin hash en el nombre; si no, la app instalada sigue mostrando los viejos.
+const CACHE = "faktu-app-v2";
 const PRECACHE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png", "/favicon.png"];
-const NEVER_CACHE = [/^\/v1\//, /^\/r(\/|$|\?)/, /^\/exports\//, /^\/health$/];
+const NEVER_CACHE = [/^\/v1\//, /^\/r(\/|$|\?)/, /^\/g(\/|$|\?)/, /^\/exports\//, /^\/health(\/|$)/];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting()));

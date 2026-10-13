@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   customerHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   customerName: { color: theme.colors.text, fontSize: 16, fontWeight: "900" },
   document: { color: theme.colors.muted, marginTop: 4, fontSize: 12, fontWeight: "700" },
-  chevron: { color: theme.colors.primary, fontSize: 26, fontWeight: "900" },
+  chevron: { color: theme.colors.primaryText, fontSize: 26, fontWeight: "900" },
   chips: { flexDirection: "row", gap: 8 },
   error: { color: theme.colors.danger, fontSize: 13, fontWeight: "700", marginTop: -7 }
 });

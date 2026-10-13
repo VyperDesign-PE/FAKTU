@@ -161,14 +161,23 @@ const AUDITED_ROUTES: Record<string, { action: string; entity: string }> = {
   "DELETE /v1/products/:clientProductId": { action: "PRODUCT_DELETE", entity: "product" },
   "PATCH /v1/billing/settings": { action: "BILLING_SETTINGS_UPDATE", entity: "tenant" },
   "PATCH /v1/business": { action: "BUSINESS_UPDATE", entity: "tenant" },
-  "POST /v1/reports/sales-register/link": { action: "EXPORT_LINK_CREATE", entity: "report" }
+  "POST /v1/reports/sales-register/link": { action: "EXPORT_LINK_CREATE", entity: "report" },
+  "POST /v1/receipts/:id/reconcile": { action: "RECEIPT_RECONCILE", entity: "receipt" },
+  "POST /v1/receipts/:id/share": { action: "RECEIPT_SHARE", entity: "receipt" },
+  "POST /v1/receipts/by-transaction/:clientTransactionId/share": { action: "RECEIPT_SHARE", entity: "receipt" },
+  "POST /v1/receipts/by-transaction/:clientTransactionId/deliveries": { action: "DELIVERY_QUEUE", entity: "receipt" },
+  "POST /v1/voidings/:id/refresh": { action: "VOIDING_REFRESH", entity: "voiding" },
+  "POST /v1/despatch-guides/:id/refresh": { action: "GUIDE_REFRESH", entity: "guide" },
+  "POST /v1/despatch-guides/:id/share": { action: "GUIDE_SHARE", entity: "guide" },
+  "POST /v1/customers": { action: "CUSTOMER_UPSERT", entity: "customer" },
+  "POST /v1/billing/test-connection": { action: "BILLING_TEST_CONNECTION", entity: "tenant" }
 };
 app.addHook("onResponse", async (request, reply) => {
   const rule = AUDITED_ROUTES[`${request.method} ${request.routeOptions?.url ?? ""}`];
   const user = request.user as Partial<SessionClaims> | undefined;
   if (!rule || reply.statusCode >= 400 || !user?.tenantId) return;
   const params = (request.params ?? {}) as Record<string, string>;
-  await audit({ tenantId: user.tenantId, userId: user.sub, action: rule.action, entityType: rule.entity, entityId: params.id ?? params.receiptId ?? params.clientProductId, ip: request.ip, meta: { status: reply.statusCode } });
+  await audit({ tenantId: user.tenantId, userId: user.sub, action: rule.action, entityType: rule.entity, entityId: params.id ?? params.receiptId ?? params.clientProductId ?? params.clientTransactionId, ip: request.ip, meta: { status: reply.statusCode } });
 });
 
 function claims(request: FastifyRequest): SessionClaims {
@@ -1046,11 +1055,11 @@ app.post("/v1/deliveries/process-pending", { preHandler: requireAuth }, async (r
 });
 
 const providerCatalog = [
-  { code: "mock", name: "Simulador", note: "Solo pruebas. No emite a SUNAT." },
-  { code: "apisperu", name: "APIsPERU", note: "Proveedor del piloto. Requiere certificado digital y usuario SOL secundario del negocio." },
-  { code: "nubefact", name: "Nubefact", note: "OSE/PSE con certificado incluido. Alternativa para escalar (plan revendedor)." },
-  { code: "efact", name: "Efact", note: "Adaptador nativo pendiente de homologación." },
-  { code: "senda", name: "Senda", note: "Adaptador nativo pendiente de homologación." }
+  { code: "mock", name: "Simulador", canIssue: true, note: "Solo pruebas. No emite a SUNAT." },
+  { code: "apisperu", name: "APIsPERU", canIssue: true, note: "Proveedor del piloto. Requiere certificado digital y usuario SOL secundario del negocio." },
+  { code: "nubefact", name: "Nubefact", canIssue: true, note: "OSE/PSE con certificado incluido. Alternativa para escalar (plan revendedor)." },
+  { code: "efact", name: "Efact", canIssue: false, note: "Adaptador nativo pendiente de homologación." },
+  { code: "senda", name: "Senda", canIssue: false, note: "Adaptador nativo pendiente de homologación." }
 ] as const;
 
 app.get("/v1/billing/providers", { preHandler: requireAuth }, async () => ({ providers: providerCatalog }));
@@ -1085,6 +1094,10 @@ app.patch("/v1/billing/settings", { preHandler: [requireAuth, requireTenantAdmin
   }
   const tenantId = claims(request).tenantId;
   const current = await getTenantBillingConfig(tenantId);
+  const wanted = providerCatalog.find((item) => item.code === parsed.data.providerCode);
+  if (wanted && !wanted.canIssue && current.providerCode !== wanted.code) {
+    return reply.code(409).send({ message: `${wanted.name} todavía no puede emitir comprobantes desde FAKTU. Elige APIsPERU o Nubefact.` });
+  }
   await updateTenantBillingConfig({
     tenantId,
     providerCode: parsed.data.providerCode as BillingProviderCode,

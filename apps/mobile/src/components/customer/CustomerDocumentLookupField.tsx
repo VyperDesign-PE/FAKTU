@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DOCUMENT_LENGTH } from "../../domain/documentRules";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { consultarDocumentoCliente, type CustomerLookupResult } from "../../services/api";
 import { theme } from "../../theme";
@@ -14,7 +15,7 @@ type Props = {
   autoLookup?: boolean;
 };
 
-const EXPECTED_LENGTH = { DNI: 8, RUC: 11 } as const;
+const EXPECTED_LENGTH = DOCUMENT_LENGTH;
 
 function sourceLabel(result?: CustomerLookupResult) {
   if (!result) return undefined;
@@ -106,7 +107,7 @@ export function CustomerDocumentLookupField({
           keyboardType="number-pad"
           maxLength={expectedLength}
           placeholder={tipoDoc === "DNI" ? "12345678" : "20123456789"}
-          placeholderTextColor="#9AA1B1"
+          placeholderTextColor={theme.colors.muted}
           returnKeyType="search"
           onSubmitEditing={() => void search()}
           style={styles.documentInput}
@@ -136,7 +137,7 @@ export function CustomerDocumentLookupField({
         onChangeText={onNombreChange}
         autoCapitalize="characters"
         placeholder={error ? "Escribe el nombre manualmente" : "Se completará automáticamente"}
-        placeholderTextColor="#9AA1B1"
+        placeholderTextColor={theme.colors.muted}
         style={styles.nameInput}
       />
 
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
   lookupRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   helper: { flex: 1, color: theme.colors.muted, fontSize: 12, lineHeight: 17 },
   errorText: { color: theme.colors.warning, fontWeight: "700" },
-  retry: { color: theme.colors.primary, fontWeight: "900", paddingVertical: 2 },
+  retry: { color: theme.colors.primaryText, fontWeight: "900", paddingVertical: 2 },
   disabled: { opacity: 0.45 },
   manualNotice: { backgroundColor: theme.colors.warningSoft, borderRadius: 10, padding: 10 },
   manualNoticeText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, fontWeight: "700" },

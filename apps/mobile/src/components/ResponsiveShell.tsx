@@ -23,10 +23,10 @@ type Props = {
 const NAV_ITEMS: Array<{ route: MainRouteName; label: string; shortLabel: string; icon: string; bottom: boolean }> = [
   { route: "Dashboard", label: "Mi negocio", shortLabel: "Inicio", icon: "◧", bottom: true },
   { route: "POSVenta", label: "Vender", shortLabel: "Vender", icon: "＋", bottom: true },
-  { route: "HistorialComprobantes", label: "Comprobantes", shortLabel: "Ventas", icon: "☰", bottom: true },
-  { route: "PorCobrar", label: "Por cobrar (fiados)", shortLabel: "Fiados", icon: "$", bottom: true },
-  { route: "Productos", label: "Productos y stock", shortLabel: "Productos", icon: "▤", bottom: true },
-  { route: "Configuracion", label: "Más opciones", shortLabel: "Más", icon: "⋯", bottom: false }
+  { route: "HistorialComprobantes", label: "Historial", shortLabel: "Historial", icon: "☰", bottom: true },
+  { route: "PorCobrar", label: "Por cobrar", shortLabel: "Por cobrar", icon: "$", bottom: true },
+  { route: "Productos", label: "Productos y stock", shortLabel: "Productos", icon: "▤", bottom: false },
+  { route: "Configuracion", label: "Más", shortLabel: "Más", icon: "⋯", bottom: true }
 ];
 
 /** Alterna claro/oscuro (solo web; en el celular se sigue el modo del sistema). */
@@ -78,7 +78,7 @@ export function ResponsiveShell({ currentRoute, navigation, children, title, sub
           <View style={styles.sidebarFooter}>
             <Text style={styles.sidebarFooterTitle} numberOfLines={1}>{businessName}</Text>
             <View style={styles.statusRow}>
-              <View style={[styles.statusDot, { backgroundColor: online ? theme.colors.mint : "#F5A524" }]} />
+              <View style={[styles.statusDot, { backgroundColor: online ? theme.colors.mint : theme.colors.onInkWarning }]} />
               <Text style={styles.sidebarFooterText}>{!online ? "Sin Internet · sigues vendiendo" : pendingCount ? `${pendingCount} por enviar` : "Todo al día"}</Text>
             </View>
           </View>
@@ -149,19 +149,19 @@ const styles = StyleSheet.create({
   navButton: { minHeight: 46, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12 },
   navHover: { backgroundColor: theme.colors.inkSoft },
   navButtonActive: { backgroundColor: theme.colors.primary },
-  navIcon: { width: 24, textAlign: "center", color: "#8D93C4", fontWeight: "900", fontSize: 17 },
-  navLabel: { color: "#C9CCE8", fontWeight: "700" },
+  navIcon: { width: 24, textAlign: "center", color: theme.colors.onInkMuted, fontWeight: "900", fontSize: 17 },
+  navLabel: { color: theme.colors.onInkMuted, fontWeight: "700" },
   navTextActive: { color: "#FFFFFF" },
-  activeText: { color: theme.colors.primary },
+  activeText: { color: theme.colors.primaryText },
   themeBtn: { marginTop: "auto", minHeight: 42, borderRadius: 12, paddingHorizontal: 12, justifyContent: "center", backgroundColor: theme.colors.inkSoft },
-  themeBtnText: { color: "#C9CCE8", fontWeight: "700" },
+  themeBtnText: { color: theme.colors.onInkMuted, fontWeight: "700" },
   sidebarFooter: { marginTop: 0, borderRadius: 14, padding: 14, backgroundColor: theme.colors.inkSoft, gap: 6 },
   sidebarFooterTitle: { color: "#FFFFFF", fontWeight: "800" },
-  sidebarFooterText: { color: "#A9AED3", fontSize: 12 },
+  sidebarFooterText: { color: theme.colors.onInkMuted, fontSize: 12 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   topBar: { position: "absolute", top: 0, left: 0, right: 0, height: 54, zIndex: 5, backgroundColor: theme.colors.ink, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 },
-  topAction: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.inkSoft },
+  topAction: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.inkSoft },
   topActionText: { color: "#FFFFFF", fontSize: 18 },
   contentColumn: { flex: 1 },
   page: { flexGrow: 1, padding: 16, paddingTop: 70, paddingBottom: 96, gap: 16 },

@@ -6,7 +6,7 @@
 
 Facturación electrónica SaaS multiempresa para pequeños negocios del Perú: bodegas, librerías, restaurantes de menú y comercios similares. App web/móvil (React Native + Expo, PWA), API (Fastify + PostgreSQL) y facturación electrónica con APIsPERU o Nubefact mediante adaptadores desacoplados.
 
-## Versión actual: 0.16.0 — lista para el piloto
+## Versión actual: 0.19.0 — lista para el piloto
 
 - **Proveedor:** APIsPERU para el piloto (sin pago inicial, S/ 25 por negocio). Nubefact (OSE/PSE) queda listo como alternativa para escalar.
 - **Plataforma:** app web instalable (PWA), servida por la misma API. La app Android sale del mismo código cuando el piloto lo valide.
@@ -179,7 +179,7 @@ npm run dev:mobile
 
 ## Importante
 
-FAKTU **todavía no emite comprobantes legales reales ante SUNAT**. El proveedor por defecto es `mock` (bloqueado en producción) y el adaptador APIsPERU solo está validado contra mocks; falta la primera boleta/factura beta real (`PRIMERA_BOLETA_BETA.md`). La emisión en producción permanece bloqueada hasta definir `BILLING_PRODUCTION_ENABLED=true`.
+FAKTU **todavía no emite comprobantes legales reales ante SUNAT**. El proveedor por defecto es `mock` (en producción solo se bloquea si defines `ALLOW_MOCK_BILLING=false`; el valor por defecto es `true` para poder correr demos y el piloto en modo práctica) y el adaptador APIsPERU solo está validado contra mocks; falta la primera boleta/factura beta real (`PRIMERA_BOLETA_BETA.md`). La emisión en producción permanece bloqueada hasta definir `BILLING_PRODUCTION_ENABLED=true`.
 
 También falta conectar almacenamiento privado para JSON/XML/PDF/CDR y compartirlos mediante enlaces firmados temporales.
 

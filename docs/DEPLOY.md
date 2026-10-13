@@ -26,7 +26,7 @@ Total típico: **≈ US$ 5/mes + dominio**. Alcanza para decenas de negocios.
    ```
 4. **Clona y configura**:
    ```bash
-   git clone -b faktu-0.13-estabilizacion https://github.com/VyperDesign-PE/FAKTU /opt/faktu && cd /opt/faktu
+   git clone -b main https://github.com/VyperDesign-PE/FAKTU /opt/faktu && cd /opt/faktu
    cp infra/.env.prod.example infra/.env.prod
    nano infra/.env.prod     # DOMAIN y los 4 secretos (openssl rand -hex 32)
    # IMPORTANTE: guarda SECRETS_MASTER_KEY también fuera del servidor (gestor de contraseñas).

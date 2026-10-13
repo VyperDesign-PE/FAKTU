@@ -19,6 +19,8 @@ import {
   type RemoteGuide
 } from "../../services/api";
 import { theme } from "../../theme";
+import { remoteStatusInfo } from "../../domain/receiptStatus";
+import { isValidDni, isValidRuc } from "../../domain/documentRules";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
@@ -30,8 +32,8 @@ const REASONS = [
   { code: "13", label: "Otros" }
 ];
 
-const statusLabel = (status: RemoteGuide["status"]) => ({ ACCEPTED: "Aceptada", PENDING: "En proceso SUNAT", REJECTED: "Rechazada", ERROR: "Revisar" })[status];
-const statusTone = (status: RemoteGuide["status"]) => (status === "ACCEPTED" ? "success" : status === "PENDING" ? "warning" : "danger") as "success" | "warning" | "danger";
+const statusLabel = (status: RemoteGuide["status"]) => remoteStatusInfo(status, "f").label;
+const statusTone = (status: RemoteGuide["status"]) => remoteStatusInfo(status, "f").tone as "success" | "warning" | "danger";
 const limaToday = () => new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10);
 
 export function GuidesScreen({ navigation }: P<"Guides">) {
@@ -123,8 +125,8 @@ export function GuideFormScreen({ navigation, route }: P<"GuideForm">) {
     if (!(grossWeight > 0)) return fail("Peso", "Indica el peso bruto total en kilogramos.");
     const cleanItems = items.filter((item) => item.description.trim()).map((item) => ({ description: item.description.trim(), quantity: Number(item.quantity.replace(",", ".")), unit: item.unit }));
     if (!cleanItems.length || cleanItems.some((item) => !(item.quantity > 0))) return fail("Bienes", "Agrega al menos un bien con su cantidad.");
-    if (guideType === "REMITENTE" && mode === "01" && (!/^\d{11}$/.test(carrierRuc) || !carrierName.trim())) return fail("Transportista", "Indica el RUC y la razón social de la empresa de transportes.");
-    if (ownVehicle && (!plate.trim() || !/^\d{8}$/.test(driverDni) || !driverNames.trim() || !driverSurnames.trim() || !driverLicense.trim())) {
+    if (guideType === "REMITENTE" && mode === "01" && (!isValidRuc(carrierRuc) || !carrierName.trim())) return fail("Transportista", "Indica el RUC y la razón social de la empresa de transportes.");
+    if (ownVehicle && (!plate.trim() || !isValidDni(driverDni) || !driverNames.trim() || !driverSurnames.trim() || !driverLicense.trim())) {
       return fail("Vehículo y conductor", "Completa la placa y los datos del conductor (DNI, nombres, apellidos y licencia).");
     }
 

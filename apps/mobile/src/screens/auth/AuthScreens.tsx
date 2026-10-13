@@ -72,7 +72,7 @@ export function LoginScreen({ navigation }: P<"Login">) {
   if (mfaToken) {
     return (
       <Screen narrow>
-        <AuthHeader title="Verificación en dos pasos" subtitle="Abre tu app de autenticación e ingresa el código de 6 dígitos de Faktu." />
+        <AuthHeader title="Verificación en dos pasos" subtitle="Abre tu app de autenticación e ingresa el código de 6 dígitos de FAKTU." />
         <Card>
           <TextField label="Código de 6 dígitos" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad" placeholder="123456" autoComplete="one-time-code" onSubmitEditing={() => void submit()} />
           <PrimaryButton label={busy ? "VERIFICANDO..." : "VERIFICAR"} onPress={() => void submit()} disabled={busy || code.length !== 6} />
@@ -87,7 +87,7 @@ export function LoginScreen({ navigation }: P<"Login">) {
       <AuthHeader title="Bienvenido nuevamente" subtitle="Ingresa para continuar con tu negocio." />
       {demo ? (
         <Card tone="info">
-          <Text style={styles.demoTitle}>¿Quieres probar Faktu?</Text>
+          <Text style={styles.demoTitle}>¿Quieres probar FAKTU?</Text>
           <Text style={styles.demoText}>Entra a la demo de {demo.business}: ventas, fiados, stock y comprobantes de práctica (sin validez SUNAT).</Text>
           <PrimaryButton label={busy ? "ABRIENDO..." : "VER LA DEMO"} onPress={() => void enterDemo()} tone="success" disabled={busy} />
         </Card>
@@ -211,7 +211,7 @@ export function RegisterScreen({ navigation }: P<"Register">) {
 const styles = StyleSheet.create({
   demoTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 },
   demoText: { color: theme.colors.muted, lineHeight: 20 },
-  link: { color: theme.colors.primary, fontWeight: "800", textAlign: "center", paddingVertical: 6 },
+  link: { color: theme.colors.primaryText, fontWeight: "800", textAlign: "center", paddingVertical: 6 },
   header: { alignItems: "center", gap: 8, paddingTop: 24, paddingBottom: 12 },
   logo: { width: 68, height: 68, borderRadius: 22, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" },
   logoText: { color: "white", fontWeight: "900", fontSize: 26 },
@@ -219,6 +219,6 @@ const styles = StyleSheet.create({
   subtitle: { color: theme.colors.muted, lineHeight: 21, textAlign: "center", maxWidth: 320 },
   registerBox: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, paddingVertical: 4 },
   registerText: { color: theme.colors.muted },
-  registerLink: { color: theme.colors.primary, fontWeight: "900" },
+  registerLink: { color: theme.colors.primaryText, fontWeight: "900" },
   securityText: { color: theme.colors.muted, lineHeight: 20, textAlign: "center" }
 });

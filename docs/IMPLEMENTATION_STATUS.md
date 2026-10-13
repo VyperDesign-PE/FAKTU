@@ -38,18 +38,19 @@
 - Persistencia de hash/XML/CDR/respuesta de proveedor en sandbox.
 - Test E2E automatizado para multi-tenant, RUC local, DNI externo/cache, correlativos, idempotencia, re-sincronizacion offline, re-login, PDF y entrega mock.
 
+## Ya implementado desde 0.13
+
+Worker/outbox con candado de PostgreSQL, refresh tokens con revocación de sesión, notas de crédito y débito, bajas, guías de remisión, rate limiting, bitácora de auditoría y bóveda de credenciales (ver CHANGELOG.md y docs/SECURITY.md).
+
 ## Pendiente antes de piloto real
 
 - Completar cotizacion reseller/ISV/API antes de produccion.
 - Obtener/configurar una empresa APIsPERU en ambiente beta y ejecutar la primera boleta/factura real de prueba.
 - Mover XML/CDR de sandbox a object storage cifrado antes de produccion (en 0.12.0 se preservan temporalmente en PostgreSQL para diagnostico).
-- Worker/outbox servidor para retries independientes del celular.
-- Refresh tokens y revocacion de sesion.
 - Recuperacion de contrasena y OTP reales.
 - WhatsApp Business API para envío automático servidor-a-servidor; el MVP ya abre WhatsApp/correo con contenido prellenado.
-- Notas de credito/anulacion.
 - Backoffice SaaS interno y cobro de suscripciones.
-- Rate limiting, auditoria, observabilidad y Secret Manager.
+- Observabilidad (Sentry o similar) y Secret Manager/KMS externo (rate limiting, auditoría y bóveda ya existen; ver docs/SECURITY.md).
 - Ejecutar el E2E Docker en una PC/CI con Docker y conservar el log como evidencia del primer pase integral.
 - Ampliar cobertura con pruebas unitarias y casos negativos de integracion.
 - Build Android/iOS firmado y pruebas en dispositivos.

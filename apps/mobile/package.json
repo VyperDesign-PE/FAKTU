@@ -9,7 +9,10 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "web": "expo start --web",
-    "build:web": "expo export --platform web --output-dir dist-web"
+    "build:web": "expo export --platform web --output-dir dist-web",
+    "test:domain": "tsx tests/domain.ts && tsx tests/navigation.ts && tsx tests/palette.ts && tsx --require ./tests/stubs/register.cjs tests/queue.ts",
+    "sync:palette": "tsx scripts/sync-palette.ts",
+    "icons": "tsx scripts/generate-icons.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",

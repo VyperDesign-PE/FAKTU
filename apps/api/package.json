@@ -14,7 +14,7 @@
     "test:apisperu-adapter": "tsx src/jobs/testApiPeruAdapter.ts",
     "test:apisperu-sandbox": "tsx src/jobs/testApiPeruSandbox.ts",
     "test:unit": "tsx src/tests/unit.ts",
-    "test:integration": "tsx src/tests/receiptIssuer.integration.ts",
+    "test:integration": "tsx src/tests/receiptIssuer.integration.ts && tsx src/tests/migrationsLock.integration.ts",
     "test:nubefact": "tsx src/tests/nubefact.ts",
     "ops:activation": "tsx src/jobs/activationInfo.ts",
     "ops:secret": "tsx src/jobs/setSecret.ts",

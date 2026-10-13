@@ -9,12 +9,15 @@ import { useApp } from "../../context/AppContext";
 import { PAYMENT_METHODS, type Customer, type PaymentMethod } from "../../domain/types";
 import { createReceiptSharePackage, type ReceiptSharePackage } from "../../services/api";
 import { theme } from "../../theme";
+import { quoteTotals } from "../../domain/pricing";
+import { localStatusInfo } from "../../domain/receiptStatus";
+import { DOCUMENT_LENGTH, mustIdentifyCustomer } from "../../domain/documentRules";
 import { shareLink, showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
 
 function totalOf(items: { quantity: number; unitPrice: number }[]) {
-  return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  return quoteTotals(items).total;
 }
 
 export function NewSaleScreen({ navigation }: P<"NewSale">) {
@@ -88,7 +91,7 @@ export function DocumentTypeScreen({ navigation }: P<"DocumentType">) {
 export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
   const { draft, setCustomer, online } = useApp();
   const total = totalOf(draft.items);
-  const mustIdentify = draft.documentType === "FACTURA" || total > 700;
+  const mustIdentify = mustIdentifyCustomer({ documentType: draft.documentType, total, paymentMethod: draft.paymentMethod });
   const [mode, setMode] = useState<"NONE" | "DNI" | "RUC">(draft.documentType === "FACTURA" ? "RUC" : "NONE");
   const [number, setNumber] = useState(draft.customer?.documentNumber ?? "");
   const [name, setName] = useState(draft.customer?.name ?? "");
@@ -110,7 +113,7 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
 
     let customer: Customer | undefined;
     if (mode !== "NONE") {
-      const expectedLength = mode === "DNI" ? 8 : 11;
+      const expectedLength = DOCUMENT_LENGTH[mode];
       if (number.length !== expectedLength) return showAlert("Documento incompleto", mode === "DNI" ? "Ingresa los 8 dígitos del DNI." : "Ingresa los 11 dígitos del RUC.");
       if (!name.trim()) return showAlert("Falta el nombre", "Busca el documento o escribe el nombre manualmente.");
       customer = { documentType: mode, documentNumber: number, name: name.trim(), ...(address.trim() ? { address: address.trim() } : {}) };
@@ -150,8 +153,7 @@ export function CustomerDataScreen({ navigation }: P<"CustomerData">) {
 export function SaleSummaryScreen({ navigation }: P<"SaleSummary">) {
   const { draft, createReceipt, online, setPayment } = useApp();
   const total = totalOf(draft.items);
-  const igv = total - total / 1.18;
-  const base = total - igv;
+  const { igv, subtotal: base } = quoteTotals(draft.items);
   const [busy, setBusy] = useState(false);
   const [received, setReceived] = useState(draft.amountReceived ? draft.amountReceived.toFixed(2) : "");
   const receivedAmount = received.trim() ? Number(received.replace(",", ".")) : undefined;
@@ -198,8 +200,8 @@ export function EmissionResultScreen({ navigation }: P<"EmissionResult">) {
   const current = queue.find((r) => r.clientTransactionId === lastReceipt?.clientTransactionId) ?? lastReceipt;
   const accepted = current?.status === "ACCEPTED";
   const rejected = current?.status === "REJECTED";
-  const title = accepted ? (current?.testMode ? "¡Venta registrada en modo pruebas!" : "¡Comprobante emitido!") : rejected ? "Comprobante rechazado" : "Venta registrada";
-  const subtitle = accepted ? (current?.testMode ? "Este comprobante es de prueba y no tiene validez ante SUNAT." : "SUNAT aceptó el comprobante.") : rejected ? "Revisa el motivo y registra la venta nuevamente." : "El comprobante se está procesando.";
+  const title = accepted ? (current?.testMode ? "¡Venta registrada en modo pruebas!" : "¡Comprobante emitido!") : rejected ? "Comprobante rechazado" : "Venta guardada";
+  const subtitle = accepted ? (current?.testMode ? "Este comprobante es de prueba y no tiene validez ante SUNAT." : "SUNAT aceptó el comprobante.") : rejected ? "Revisa el motivo y registra la venta nuevamente." : localStatusInfo(current?.status ?? "PENDING").description;
   return <Screen title={title} subtitle={subtitle}>
     <View style={styles.resultIcon}><Text style={styles.resultCheck}>{accepted ? "✓" : rejected ? "✕" : "…"}</Text></View>
     <Card tone={accepted ? "success" : rejected ? "danger" : "warning"}><InfoRow label="Número" value={current?.officialNumber ?? current?.temporaryNumber ?? "-"} /><InfoRow label="Total" value={`S/ ${(current?.total ?? 0).toFixed(2)}`} /><InfoRow label="Estado" value={accepted ? "Aceptado" : rejected ? "Rechazado" : "Pendiente"} />{current?.paymentMethod ? <InfoRow label="Pago" value={PAYMENT_METHODS.find((m) => m.value === current.paymentMethod)?.label ?? current.paymentMethod} /> : null}{current?.amountReceived !== undefined ? <InfoRow label="Vuelto" value={`S/ ${(current.amountReceived - current.total).toFixed(2)}`} /> : null}</Card>
@@ -265,8 +267,8 @@ export function ShareReceiptScreen({ navigation, route }: P<"ShareReceipt">) {
 
 const styles = StyleSheet.create({
   productGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, productCard: { width: "31%", minHeight: 96, padding: 11, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, justifyContent: "space-between" },
-  productName: { color: theme.colors.text, fontWeight: "800" }, price: { color: theme.colors.primary, fontWeight: "900", marginTop: 8 }, muted: { color: theme.colors.muted, lineHeight: 20 }, warning: { color: theme.colors.warning, fontWeight: "800" },
-  cartRow: { flexDirection: "row", alignItems: "center", gap: 10 }, qty: { flexDirection: "row", alignItems: "center", gap: 8 }, qtyButton: { color: theme.colors.primary, fontSize: 22, fontWeight: "900", padding: 5 }, qtyValue: { minWidth: 20, textAlign: "center", fontWeight: "900" }, delete: { color: theme.colors.danger, fontSize: 24, fontWeight: "900" },
+  productName: { color: theme.colors.text, fontWeight: "800" }, price: { color: theme.colors.primaryText, fontWeight: "900", marginTop: 8 }, muted: { color: theme.colors.muted, lineHeight: 20 }, warning: { color: theme.colors.warning, fontWeight: "800" },
+  cartRow: { flexDirection: "row", alignItems: "center", gap: 10 }, qty: { flexDirection: "row", alignItems: "center", gap: 8 }, qtyButton: { color: theme.colors.primaryText, fontSize: 22, fontWeight: "900", padding: 5 }, qtyValue: { minWidth: 20, textAlign: "center", fontWeight: "900" }, delete: { color: theme.colors.danger, fontSize: 24, fontWeight: "900" },
   docTitle: { fontSize: 17, fontWeight: "900", color: theme.colors.text }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, resultIcon: { alignItems: "center", paddingVertical: 10 }, resultCheck: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.colors.success, color: "white", textAlign: "center", lineHeight: 72, fontSize: 42, fontWeight: "900" },
   shareGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, shareCard: { width: "48%", minHeight: 90, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 15, alignItems: "center", justifyContent: "center", padding: 12 }, shareActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, shareTitle: { color: theme.colors.text, fontWeight: "900", textAlign: "center" }
 });

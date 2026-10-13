@@ -66,7 +66,7 @@ export function TextField({
         returnKeyType={returnKeyType}
         editable={editable}
         style={[styles.input, error && styles.inputError, !editable && styles.inputDisabled]}
-        placeholderTextColor="#9AA1B1"
+        placeholderTextColor={theme.colors.muted}
         accessibilityLabel={label}
         accessibilityHint={error}
       />
@@ -88,7 +88,7 @@ export function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export function Chip({ label, active, onPress }: { label: string; active?: boolean; onPress?: () => void }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={[styles.chip, active && styles.chipActive]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected: Boolean(active) }} onPress={onPress} style={[styles.chip, active && styles.chipActive]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   outline: { backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.primary },
   disabled: { opacity: 0.45 },
   buttonText: { color: "white", fontWeight: "900", fontSize: 15, textAlign: "center" },
-  outlineText: { color: theme.colors.primary },
+  outlineText: { color: theme.colors.primaryText },
   field: { gap: 7 },
   label: { color: theme.colors.text, fontWeight: "800" },
   input: { minHeight: 51, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 13, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 16 },
@@ -115,8 +115,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 7, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
   rowLabel: { color: theme.colors.muted, flex: 1 },
   rowValue: { color: theme.colors.text, fontWeight: "800", flex: 1, textAlign: "right" },
-  chip: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 13 },
+  chip: { borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface, borderRadius: 999, minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },
   chipActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
   chipText: { color: theme.colors.muted, fontWeight: "800" },
-  chipTextActive: { color: theme.colors.primary }
+  chipTextActive: { color: theme.colors.primaryText }
 });

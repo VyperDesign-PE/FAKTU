@@ -6,6 +6,8 @@ import { Screen } from "../../components/Screen";
 import { Card, InfoRow, PrimaryButton } from "../../components/Ui";
 import { useApp } from "../../context/AppContext";
 import { theme } from "../../theme";
+import { attentionCount } from "../../domain/receiptMetrics";
+import { localStatusInfo } from "../../domain/receiptStatus";
 import { showAlert } from "../../components/platform";
 
 type P<Name extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, Name>;
@@ -44,7 +46,7 @@ export function PendingReceiptsScreen({ navigation }: P<"PendingReceipts">) {
   const pending = queue.filter((r) => r.status !== "ACCEPTED");
   const retryable = pending.filter((r) => r.status !== "REJECTED");
   return <Screen title="Pendientes de envío" subtitle={pending.length ? "Se enviarán automáticamente cuando haya conexión." : "No tienes comprobantes pendientes."}>
-    {pending.map((r) => <Card key={r.clientTransactionId} tone={r.status === "ERROR" || r.status === "REJECTED" ? "danger" : "warning"}><InfoRow label="Constancia" value={r.temporaryNumber} /><InfoRow label="Tipo" value={r.documentType} /><InfoRow label="Total" value={`S/ ${r.total.toFixed(2)}`} /><InfoRow label="Estado" value={r.status === "REJECTED" ? "Rechazado" : r.status === "ERROR" ? "Revisar" : r.status === "SYNCING" ? "Enviando" : "Pendiente"} />{r.errorMessage ? <Text style={styles.error}>{r.errorMessage}</Text> : null}</Card>)}
+    {pending.map((r) => <Card key={r.clientTransactionId} tone={r.status === "ERROR" || r.status === "REJECTED" ? "danger" : "warning"}><InfoRow label="Constancia" value={r.temporaryNumber} /><InfoRow label="Tipo" value={r.documentType} /><InfoRow label="Total" value={`S/ ${r.total.toFixed(2)}`} /><InfoRow label="Estado" value={localStatusInfo(r.status).label} />{r.errorMessage ? <Text style={styles.error}>{r.errorMessage}</Text> : null}</Card>)}
     <PrimaryButton label={online ? "SINCRONIZAR AHORA" : "SIN INTERNET: SE ENVIARÁ DESPUÉS"} disabled={!online || !retryable.length} onPress={() => navigation.navigate("Syncing")} />
     <PrimaryButton label="VOLVER AL INICIO" onPress={() => navigation.navigate("Dashboard")} tone="outline" />
   </Screen>;
@@ -66,7 +68,7 @@ export function SyncingScreen({ navigation }: P<"Syncing">) {
 export function SyncResultScreen({ navigation, route }: P<"SyncResult">) {
   const { queue } = useApp();
   const accepted = route.params?.accepted ?? queue.filter((r) => r.status === "ACCEPTED").length;
-  const errors = route.params?.errors ?? queue.filter((r) => r.status === "ERROR").length;
+  const errors = route.params?.errors ?? attentionCount(queue);
   return <Screen title="Sincronización completada" subtitle="Revisa el resultado del envío.">
     <View style={styles.center}><Text style={styles.ok}>✓</Text></View>
     <Card tone="success"><InfoRow label="Aceptados" value={String(accepted)} /></Card>

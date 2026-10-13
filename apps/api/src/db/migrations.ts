@@ -18,7 +18,21 @@ const SESSIONS_MIGRATION_ID = "20261015_011_sessions_recovery_codes";
  * En producción conviene ejecutar migraciones como paso separado del deploy.
  * Para el MVP, el servidor puede ejecutarlas al iniciar si DB_AUTO_MIGRATE=true.
  */
+/** Candado de sesión de PostgreSQL: serializa migraciones cuando API y worker arrancan a la vez. */
+const MIGRATION_LOCK_KEY = 727002;
+
 export async function runMigrations() {
+  const lock = await sql.reserve();
+  try {
+    await lock`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
+    await applyMigrations();
+  } finally {
+    await lock`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`.catch(() => undefined);
+    lock.release();
+  }
+}
+
+async function applyMigrations() {
   await sql`
     create table if not exists schema_migrations (
       id text primary key,

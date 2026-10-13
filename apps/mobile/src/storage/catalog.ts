@@ -27,3 +27,20 @@ export async function loadCatalog(scope: string): Promise<Product[]> {
 export async function saveCatalog(scope: string, products: Product[]) {
   await AsyncStorage.setItem(key(scope), JSON.stringify(products));
 }
+
+/**
+ * Productos borrados mientras no había conexión (o cuando el servidor falló): se reintenta el
+ * borrado y, mientras tanto, no se muestran ni se vuelven a subir. Sin esto, la sincronización
+ * "resucitaba" el producto desde el servidor.
+ */
+const deletedKey = (scope: string) => `catalog_pending_deletes_v1:${scope}`;
+
+export async function loadPendingDeletes(scope: string): Promise<string[]> {
+  const raw = await AsyncStorage.getItem(deletedKey(scope));
+  return raw ? (JSON.parse(raw) as string[]) : [];
+}
+
+export async function savePendingDeletes(scope: string, ids: string[]) {
+  if (ids.length) await AsyncStorage.setItem(deletedKey(scope), JSON.stringify([...new Set(ids)]));
+  else await AsyncStorage.removeItem(deletedKey(scope));
+}

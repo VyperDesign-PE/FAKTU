@@ -18,8 +18,9 @@ import {
   OfflineHomeScreen, OfflineSaleScreen, TemporaryReceiptScreen, PendingReceiptsScreen, SyncingScreen, SyncResultScreen
 } from "../screens/offline/OfflineScreens";
 import {
-  CatalogScreen, ReceiptHistoryScreen, ReceiptDetailScreen, SystemStatusScreen, BusinessScreen, SupportScreen
+  CatalogScreen, ReceiptHistoryScreen, ReceiptDetailScreen, SystemStatusScreen, BusinessScreen, SupportScreen, BillingSettingsScreen
 } from "../screens/management/ManagementScreens";
+import { CustomerFormScreen, CustomersScreen } from "../screens/customers/CustomerScreens";
 import {
   DashboardScreen, HistorialComprobantesScreen, ConfiguracionScreen
 } from "../screens/main/MainSectionScreens";
@@ -99,6 +100,9 @@ export function AppRouter() {
         <Stack.Screen name="Guides" component={GuidesScreen} />
         <Stack.Screen name="GuideForm" component={GuideFormScreen} />
         <Stack.Screen name="GuideDetail" component={GuideDetailScreen} />
+        <Stack.Screen name="Customers" component={CustomersScreen} />
+        <Stack.Screen name="CustomerForm" component={CustomerFormScreen} />
+        <Stack.Screen name="BillingSettings" component={BillingSettingsScreen} />
         <Stack.Screen name="SystemStatus" component={SystemStatusScreen} />
         <Stack.Screen name="Business" component={BusinessScreen} />
         <Stack.Screen name="Support" component={SupportScreen} />
