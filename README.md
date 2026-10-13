@@ -1,6 +1,6 @@
 # FAKTU
 
-> **En línea en 10 minutos (gratis):** Render → New → Blueprint con este repositorio (usa `render.yaml`). Ver [docs/DEMO.md](docs/DEMO.md#c-en-línea-con-https-render-10-minutos-gratis).
+> **En línea:** Railway (`railway.toml`, ver [docs/RAILWAY.md](docs/RAILWAY.md)) o Render → New → Blueprint con este repositorio (usa `render.yaml`). Ver [docs/DEMO.md](docs/DEMO.md#c-en-línea-con-https-render-10-minutos-gratis).
 >
 > **Demo local:** `npm run demo:up` y `npm run demo:seed` — ver [docs/DEMO.md](docs/DEMO.md).
 

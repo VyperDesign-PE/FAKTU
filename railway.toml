@@ -1,0 +1,11 @@
+# Despliegue en Railway (config-as-code). Ver docs/RAILWAY.md.
+# Railway asigna PORT automáticamente; la app lo respeta.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health/ready"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

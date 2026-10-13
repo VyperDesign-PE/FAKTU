@@ -4,6 +4,7 @@
 - **Códigos de recuperación 2FA** (8, de un solo uso).
 - **Monitoreo**: `/health/ready` y alertas por webhook (Slack/Discord) de documentos atascados y fallas del worker.
 - **Demo pública**: botón "Ver la demo" en el ingreso (`DEMO_PUBLIC_LOGIN`), protegida contra bloqueos.
+- `railway.toml` y `docs/RAILWAY.md` (Railway: prueba gratis y plan Hobby).
 - `render.yaml` listo para la demo en línea (health check profundo, demo cargada y botón de demo).
 
 # 0.18.0 - Arquitectura segura: worker, bóveda, auditoría y 2FA
