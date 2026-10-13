@@ -52,6 +52,10 @@ Total típico: **≈ US$ 5/mes + dominio**. Alcanza para decenas de negocios.
    (Nubefact además necesita `url`.) Luego activa el proveedor del negocio como indica `docs/PILOTO.md`. Nunca pongas tokens en Git.
 9. **Servicios**: `faktu` (web + API), `worker` (reintentos con SUNAT), `postgres` y `caddy`. Si un comprobante queda pendiente, el `worker` lo reintenta aunque nadie abra la app: `docker compose ... logs -f worker`.
 
+## Monitoreo
+- `https://tu-dominio/health/ready` responde 200 si la base está arriba y muestra documentos atascados; úsalo en UptimeRobot o Better Stack (gratis) para que te avise si cae.
+- Pon un webhook de Slack o Discord en `ALERT_WEBHOOK_URL` y el worker avisará si hay documentos sin respuesta por más de 30 minutos.
+
 ## Si algo falla
 - `docker compose ... ps` muestra el estado; `logs faktu` el detalle.
 - Certificado no emitido: confirma que el DNS apunta al servidor y que los puertos 80/443 están abiertos.

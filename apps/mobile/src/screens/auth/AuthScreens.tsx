@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
@@ -6,6 +6,7 @@ import { Screen } from "../../components/Screen";
 import { BrandLogo } from "../../components/Brand";
 import { Card, PrimaryButton, TextField } from "../../components/Ui";
 import { useAuth } from "../../context/AuthContext";
+import { getPublicConfig } from "../../services/api";
 import { hasErrors, normalizeEmail, validateLogin, validateRegistration } from "../../auth/validation";
 import { theme } from "../../theme";
 import { showAlert } from "../../components/platform";
@@ -25,6 +26,21 @@ function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
 export function LoginScreen({ navigation }: P<"Login">) {
   const { signIn, completeMfa } = useAuth();
   const [mfaToken, setMfaToken] = useState<string>();
+  const [demo, setDemo] = useState<{ email: string; password: string; business: string } | null>(null);
+  useEffect(() => { getPublicConfig().then((config) => setDemo(config.demo)).catch(() => undefined); }, []);
+
+  async function enterDemo() {
+    if (!demo) return;
+    setBusy(true);
+    try {
+      await signIn(demo.email, demo.password);
+      navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] });
+    } catch (error) {
+      showAlert("No pudimos abrir la demo", error instanceof Error ? error.message : "Intenta nuevamente.");
+    } finally {
+      setBusy(false);
+    }
+  }
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,6 +85,13 @@ export function LoginScreen({ navigation }: P<"Login">) {
   return (
     <Screen narrow>
       <AuthHeader title="Bienvenido nuevamente" subtitle="Ingresa para continuar con tu negocio." />
+      {demo ? (
+        <Card tone="info">
+          <Text style={styles.demoTitle}>¿Quieres probar Faktu?</Text>
+          <Text style={styles.demoText}>Entra a la demo de {demo.business}: ventas, fiados, stock y comprobantes de práctica (sin validez SUNAT).</Text>
+          <PrimaryButton label={busy ? "ABRIENDO..." : "VER LA DEMO"} onPress={() => void enterDemo()} tone="success" disabled={busy} />
+        </Card>
+      ) : null}
       <Card>
         <TextField
           label="Correo electrónico"
@@ -186,6 +209,8 @@ export function RegisterScreen({ navigation }: P<"Register">) {
 }
 
 const styles = StyleSheet.create({
+  demoTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 16 },
+  demoText: { color: theme.colors.muted, lineHeight: 20 },
   link: { color: theme.colors.primary, fontWeight: "800", textAlign: "center", paddingVertical: 6 },
   header: { alignItems: "center", gap: 8, paddingTop: 24, paddingBottom: 12 },
   logo: { width: 68, height: 68, borderRadius: 22, backgroundColor: theme.colors.primary, alignItems: "center", justifyContent: "center" },

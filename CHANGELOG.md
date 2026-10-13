@@ -1,3 +1,11 @@
+# 0.19.0 - Sesiones seguras, recuperación 2FA, monitoreo y demo pública en línea
+
+- **Sesiones**: acceso de 15 min + renovación rotativa de 30 días (solo hash en la base); reuso de un token rotado revoca el dispositivo; cerrar sesión invalida al instante; "Cerrar sesión en todos los dispositivos". La app renueva sola, sin que el usuario lo note.
+- **Códigos de recuperación 2FA** (8, de un solo uso).
+- **Monitoreo**: `/health/ready` y alertas por webhook (Slack/Discord) de documentos atascados y fallas del worker.
+- **Demo pública**: botón "Ver la demo" en el ingreso (`DEMO_PUBLIC_LOGIN`), protegida contra bloqueos.
+- `render.yaml` listo para la demo en línea (health check profundo, demo cargada y botón de demo).
+
 # 0.18.0 - Arquitectura segura: worker, bóveda, auditoría y 2FA
 
 - **Worker dedicado** (`npm run worker`, servicio `worker` en el compose de producción) con candado de PostgreSQL; la API puede seguir llevándolo integrado (demo).

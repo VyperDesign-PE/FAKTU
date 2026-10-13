@@ -47,7 +47,8 @@ export function AppRouter() {
       : "Welcome";
 
   return (
-    <NavigationContainer>
+    // Al entrar o salir de sesión se reinicia la navegación (evita quedar en pantallas protegidas).
+    <NavigationContainer key={isAuthenticated ? "session" : "guest"}>
       <Stack.Navigator initialRouteName={initialRouteName} screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />

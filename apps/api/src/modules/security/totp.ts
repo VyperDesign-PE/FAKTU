@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { sql } from "../../db/client.js";
 import { decryptSecret, encryptSecret } from "./vault.js";
 
@@ -86,4 +86,35 @@ export async function checkMfaCode(userId: string, code: string) {
 
 export async function disableMfa(userId: string) {
   await sql`delete from user_mfa where user_id = ${userId}`;
+  await sql`delete from user_mfa_recovery_codes where user_id = ${userId}`;
+}
+
+/** Códigos de recuperación: 8 códigos de un solo uso para entrar si se pierde el celular. */
+const recoveryHash = (userId: string, code: string) => createHash("sha256").update(`${userId}:${code.replace(/[^A-Z0-9]/gi, "").toUpperCase()}`).digest("hex");
+
+export async function generateRecoveryCodes(userId: string) {
+  const codes = Array.from({ length: 8 }, () => {
+    const raw = base32Encode(randomBytes(5)).slice(0, 8);
+    return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+  });
+  await sql.begin(async (tx) => {
+    await tx`delete from user_mfa_recovery_codes where user_id = ${userId}`;
+    for (const code of codes) await tx`insert into user_mfa_recovery_codes (user_id, code_hash) values (${userId}, ${recoveryHash(userId, code)})`;
+  });
+  return codes;
+}
+
+/** Consume un código de recuperación (solo sirve una vez). */
+export async function useRecoveryCode(userId: string, code: string) {
+  const rows = await sql`
+    update user_mfa_recovery_codes set used_at = now()
+    where user_id = ${userId} and code_hash = ${recoveryHash(userId, code)} and used_at is null
+    returning user_id
+  `;
+  return rows.length === 1;
+}
+
+export async function remainingRecoveryCodes(userId: string) {
+  const rows = await sql<{ count: string }[]>`select count(*) as count from user_mfa_recovery_codes where user_id = ${userId} and used_at is null`;
+  return Number(rows[0]?.count ?? 0);
 }

@@ -41,22 +41,25 @@ npm run dev                              # API + web en http://localhost:4000
 npm run demo:seed
 ```
 
-### C. En línea con HTTPS (Render, ~10 minutos)
+### C. En línea con HTTPS (Render, ~10 minutos, gratis)
 
-El repositorio trae `render.yaml` (Blueprint): crea el servicio web, la base PostgreSQL y las claves secretas, y **carga la demo sola** en el primer arranque (`DEMO_AUTOSEED=true`).
+El repositorio trae `render.yaml` (Blueprint). Render crea el servicio web con HTTPS, la base PostgreSQL y todas las claves secretas; en el primer arranque **carga la demo** y la pantalla de ingreso muestra el botón **"Ver la demo"**: tus prospectos entran con un toque, sin escribir contraseñas.
 
-1. Entra a https://render.com y crea una cuenta con GitHub.
-2. **New → Blueprint** → conecta el repositorio `VyperDesign-PE/FAKTU` y elige la rama `faktu-0.13-estabilizacion` (o `main` una vez fusionada).
-3. Render lee `render.yaml`; confirma con **Apply**. La primera construcción tarda unos 5–8 minutos.
-4. Abre la URL `https://faktu-xxxx.onrender.com` e ingresa con `demo@faktu.pe` / `Demo-Faktu-2026`.
-5. En el celular abre el mismo enlace y usa "Agregar a pantalla de inicio" para instalarla como app.
-6. Dominio propio (opcional): Settings → Custom Domains → `app.tudominio.pe`.
+1. Entra a https://dashboard.render.com y crea una cuenta con GitHub (no pide tarjeta para el plan gratis).
+2. **New → Blueprint** → conecta el repositorio `VyperDesign-PE/FAKTU`, rama `faktu-0.13-estabilizacion` (o `main` cuando se fusione).
+3. **Apply**. La primera construcción tarda 5–8 minutos (Logs muestra el avance; al final aparece `demo cargada`).
+4. Abre `https://faktu-xxxx.onrender.com` y toca **VER LA DEMO**.
+5. Comparte el enlace. En el celular: "Agregar a pantalla de inicio" la instala como app.
+6. (Opcional) Dominio propio: Settings → Custom Domains → `demo.tudominio.pe`.
+7. (Opcional) Alertas: en Environment pega en `ALERT_WEBHOOK_URL` un webhook de Slack o Discord.
 
-Notas del plan gratuito de Render: el servicio se duerme tras ~15 min sin visitas (el primer acceso tarda 30–60 s: ábrelo antes de presentar) y la base gratuita caduca a los 30 días. Para un piloto con clientes reales usa el plan de pago (~US$ 7 web + ~US$ 6 base) y desactiva la carga automática de la demo quitando `DEMO_AUTOSEED`.
+**Antes de presentar:** el plan gratis se duerme tras ~15 min sin visitas; abre el enlace 1–2 minutos antes. La base gratis de Render caduca a los 30 días: para una demo más larga crea una base gratuita en **Neon** (neon.tech, sin caducidad), copia su cadena de conexión y reemplaza `DATABASE_URL` en Environment.
 
-Otras plataformas (Railway, Fly.io, un VPS): usa `infra/Dockerfile`, puerto 4000, health check `/health` y las mismas variables que `render.yaml`; define `PUBLIC_APP_BASE_URL=https://tu-dominio`.
+**Para clientes reales** (no demo): plan de pago de Render o el VPS de `docs/DEPLOY.md`, con `DEMO_AUTOSEED` y `DEMO_PUBLIC_LOGIN` en `false`.
 
-> Para el piloto real (facturación con SUNAT) sigue `docs/PILOTO.md`: ahí se configura APIsPERU y se desactiva el modo práctica por negocio.
+Otras plataformas (Railway, Fly.io): usa `infra/Dockerfile`, puerto 4000, health check `/health/ready` y las mismas variables que `render.yaml`.
+
+> Para el piloto real (facturación con SUNAT) sigue `docs/PILOTO.md`.
 
 ### D. Expo Go (solo desarrollo)
 

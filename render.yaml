@@ -1,6 +1,7 @@
-# Despliegue de la demo de FAKTU en Render (Blueprint): app web + API + PostgreSQL.
-# Render → New → Blueprint → elige este repositorio y la rama a publicar.
-# Modo práctica: el simulador emite los comprobantes (sin validez SUNAT).
+# Despliegue de FAKTU en Render (Blueprint): app web + API + PostgreSQL con HTTPS.
+# Render → New → Blueprint → elige este repositorio y la rama a publicar → Apply.
+# Configurado para la DEMO pública: modo práctica (sin validez SUNAT), negocio de
+# ejemplo cargado al primer arranque y botón "Ver la demo" en la pantalla de ingreso.
 services:
   - type: web
     name: faktu
@@ -8,7 +9,8 @@ services:
     dockerfilePath: ./infra/Dockerfile
     dockerContext: .
     plan: free
-    healthCheckPath: /health
+    region: oregon
+    healthCheckPath: /health/ready
     envVars:
       - key: NODE_ENV
         value: production
@@ -32,9 +34,15 @@ services:
         value: mock
       - key: DEMO_AUTOSEED
         value: "true"
+      - key: DEMO_PUBLIC_LOGIN
+        value: "true"
+      # Opcional: webhook de Slack/Discord para alertas (documentos atascados, fallas del worker).
+      - key: ALERT_WEBHOOK_URL
+        sync: false
 
 databases:
   - name: faktu-db
     plan: free
+    region: oregon
     databaseName: faktu
     user: faktu

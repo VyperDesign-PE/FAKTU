@@ -11,7 +11,10 @@ import { sql } from "./db/client.js";
 import { runMigrations } from "./db/migrations.js";
 import { audit, listAudit } from "./modules/security/audit.js";
 import { startSecretCacheRefresh } from "./modules/security/vault.js";
-import { checkMfaCode, disableMfa, enableMfa, generateTotpSecret, isMfaEnabled, otpauthUrl, startMfaSetup } from "./modules/security/totp.js";
+import { checkMfaCode, disableMfa, enableMfa, generateRecoveryCodes, generateTotpSecret, isMfaEnabled, otpauthUrl, remainingRecoveryCodes, startMfaSetup, useRecoveryCode } from "./modules/security/totp.js";
+import { createSession, isSessionActive, listActiveSessions, revokeAllUserSessions, revokeSessionFamily, rotateSession, SessionError } from "./modules/security/sessions.js";
+import { stuckDocuments } from "./modules/ops/alerts.js";
+import { DEMO_EMAIL, DEMO_PASSWORD } from "./modules/demo/demoData.js";
 import { getArchivedFile } from "./modules/receipts/archive.js";
 import { startWorker } from "./jobs/workerLoop.js";
 import { credentialsSchema } from "./modules/auth/schemas.js";
@@ -130,13 +133,16 @@ startSecretCacheRefresh();
 const billingService = new BillingService();
 const deliveryService = new DeliveryService();
 
-type SessionClaims = { sub: string; email: string; tenantId: string };
+type SessionClaims = { sub: string; email: string; tenantId: string; sid: string };
 
 async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   try {
     await request.jwtVerify();
     // El token del paso intermedio de 2FA no sirve como sesión.
-    if ((request.user as { purpose?: string }).purpose) throw new Error("not a session token");
+    const user = request.user as { purpose?: string; sid?: string };
+    if (user.purpose || !user.sid) throw new Error("not a session token");
+    // Cerrar sesión (o detectar un token robado) invalida el acceso al instante.
+    if (!(await isSessionActive(user.sid))) throw new Error("session revoked");
   } catch {
     return reply.code(401).send({ message: "Tu sesión venció. Ingresa nuevamente." });
   }
@@ -169,10 +175,24 @@ function claims(request: FastifyRequest): SessionClaims {
   return request.user as SessionClaims;
 }
 
-function issueSession(user: { id: string; email: string; tenantId: string }) {
-  const accessToken = app.jwt.sign({ sub: user.id, email: user.email, tenantId: user.tenantId }, { expiresIn: "7d" });
-  return { accessToken, user };
+const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL ?? "15m";
+
+function requestMeta(request: FastifyRequest) {
+  return { userAgent: String(request.headers["user-agent"] ?? ""), ip: request.ip };
 }
+
+function signAccess(user: { id: string; email: string; tenantId: string }, sessionId: string) {
+  return app.jwt.sign({ sub: user.id, email: user.email, tenantId: user.tenantId, sid: sessionId }, { expiresIn: ACCESS_TOKEN_TTL });
+}
+
+async function issueSession(user: { id: string; email: string; tenantId: string }, request: FastifyRequest) {
+  const session = await createSession(user.id, requestMeta(request));
+  return { accessToken: signAccess(user, session.sessionId), refreshToken: session.refreshToken, user };
+}
+
+/** Cuenta de demostración pública: cualquiera puede entrar, así que no puede bloquearla. */
+const demoPublicLogin = (process.env.DEMO_PUBLIC_LOGIN ?? "false").toLowerCase() === "true";
+const isPublicDemoAccount = (email?: string) => demoPublicLogin && email?.toLowerCase() === DEMO_EMAIL.toLowerCase();
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char] ?? char));
@@ -198,7 +218,7 @@ app.post("/v1/auth/register", { config: authRateLimit }, async (request, reply) 
   const user = await createUser(email, await hashPassword(password));
   if (!user) return reply.code(409).send({ message: "Ya existe una cuenta con ese correo." });
   await audit({ tenantId: user.tenantId, userId: user.id, action: "USER_REGISTER", ip: request.ip });
-  return reply.code(201).send(issueSession({ id: user.id, email: user.email, tenantId: user.tenantId }));
+  return reply.code(201).send(await issueSession({ id: user.id, email: user.email, tenantId: user.tenantId }, request));
 });
 
 app.post("/v1/auth/login", { config: authRateLimit }, async (request, reply) => {
@@ -215,12 +235,12 @@ app.post("/v1/auth/login", { config: authRateLimit }, async (request, reply) => 
     return { mfaRequired: true, mfaToken };
   }
   await audit({ tenantId: user.tenantId, userId: user.id, action: "LOGIN", ip: request.ip });
-  return issueSession({ id: user.id, email: user.email, tenantId: user.tenantId });
+  return issueSession({ id: user.id, email: user.email, tenantId: user.tenantId }, request);
 });
 
 app.post("/v1/auth/mfa/verify", { config: authRateLimit }, async (request, reply) => {
-  const parsed = z.object({ mfaToken: z.string().min(10), code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
-  if (!parsed.success) return reply.code(400).send({ message: "Ingresa el código de 6 dígitos." });
+  const parsed = z.object({ mfaToken: z.string().min(10), code: z.string().trim().min(6).max(12) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ message: "Ingresa el código de 6 dígitos o un código de recuperación." });
   let userId: string;
   try {
     const payload = app.jwt.verify<{ sub: string; purpose?: string }>(parsed.data.mfaToken);
@@ -229,20 +249,27 @@ app.post("/v1/auth/mfa/verify", { config: authRateLimit }, async (request, reply
   } catch {
     return reply.code(401).send({ message: "El ingreso venció. Vuelve a ingresar tu correo y contraseña." });
   }
-  if (!(await checkMfaCode(userId, parsed.data.code))) {
+  const isRecovery = !/^\d{6}$/.test(parsed.data.code);
+  const valid = isRecovery ? await useRecoveryCode(userId, parsed.data.code) : await checkMfaCode(userId, parsed.data.code);
+  if (!valid) {
     await audit({ userId, action: "MFA_FAILED", ip: request.ip });
     return reply.code(401).send({ message: "Código incorrecto o vencido." });
   }
   const user = await findUserById(userId);
   if (!user) return reply.code(401).send({ message: "Cuenta no encontrada." });
-  await audit({ tenantId: user.tenantId, userId, action: "LOGIN", ip: request.ip, meta: { mfa: true } });
-  return issueSession({ id: user.id, email: user.email, tenantId: user.tenantId });
+  await audit({ tenantId: user.tenantId, userId, action: isRecovery ? "MFA_RECOVERY_USED" : "LOGIN", ip: request.ip, meta: { mfa: true } });
+  return issueSession({ id: user.id, email: user.email, tenantId: user.tenantId }, request);
 });
 
-app.get("/v1/auth/mfa/status", { preHandler: requireAuth }, async (request) => ({ enabled: await isMfaEnabled(claims(request).sub) }));
+app.get("/v1/auth/mfa/status", { preHandler: requireAuth }, async (request) => {
+  const userId = claims(request).sub;
+  const enabled = await isMfaEnabled(userId);
+  return { enabled, recoveryCodesLeft: enabled ? await remainingRecoveryCodes(userId) : 0 };
+});
 
 app.post("/v1/auth/mfa/setup", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
   const user = claims(request);
+  if (isPublicDemoAccount(user.email)) return reply.code(403).send({ message: "La cuenta de demostración no permite activar la verificación en dos pasos." });
   if (await isMfaEnabled(user.sub)) return reply.code(409).send({ message: "La verificación en dos pasos ya está activa." });
   const secret = generateTotpSecret();
   await startMfaSetup(user.sub, secret);
@@ -255,7 +282,8 @@ app.post("/v1/auth/mfa/enable", { preHandler: requireAuth, config: authRateLimit
   const user = claims(request);
   if (!(await enableMfa(user.sub, parsed.data.code))) return reply.code(400).send({ message: "Código incorrecto. Revisa la hora de tu celular e inténtalo de nuevo." });
   await audit({ tenantId: user.tenantId, userId: user.sub, action: "MFA_ENABLED", ip: request.ip });
-  return { enabled: true };
+  // Se muestran una sola vez: el usuario debe guardarlos.
+  return { enabled: true, recoveryCodes: await generateRecoveryCodes(user.sub) };
 });
 
 app.post("/v1/auth/mfa/disable", { preHandler: requireAuth, config: authRateLimit }, async (request, reply) => {
@@ -266,6 +294,56 @@ app.post("/v1/auth/mfa/disable", { preHandler: requireAuth, config: authRateLimi
   await disableMfa(user.sub);
   await audit({ tenantId: user.tenantId, userId: user.sub, action: "MFA_DISABLED", ip: request.ip });
   return { enabled: false };
+});
+
+app.post("/v1/auth/refresh", { config: authRateLimit }, async (request, reply) => {
+  const parsed = z.object({ refreshToken: z.string().min(20).max(200) }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ message: "Sesión inválida." });
+  try {
+    const rotated = await rotateSession(parsed.data.refreshToken, requestMeta(request));
+    const user = await findUserById(rotated.userId);
+    if (!user) return reply.code(401).send({ message: "Cuenta no encontrada." });
+    return { accessToken: signAccess(user, rotated.sessionId), refreshToken: rotated.refreshToken, user: { id: user.id, email: user.email, tenantId: user.tenantId } };
+  } catch (error) {
+    if (error instanceof SessionError) {
+      await audit({ action: "SESSION_REFRESH_DENIED", ip: request.ip, meta: { reason: error.message } });
+      return reply.code(401).send({ message: error.message });
+    }
+    throw error;
+  }
+});
+
+app.post("/v1/auth/logout", { preHandler: requireAuth }, async (request) => {
+  const user = claims(request);
+  await revokeSessionFamily(user.sid);
+  await audit({ tenantId: user.tenantId, userId: user.sub, action: "LOGOUT", ip: request.ip });
+  return { ok: true };
+});
+
+app.post("/v1/auth/logout-all", { preHandler: requireAuth }, async (request, reply) => {
+  const user = claims(request);
+  if (isPublicDemoAccount(user.email)) return reply.code(403).send({ message: "No disponible en la cuenta de demostración." });
+  await revokeAllUserSessions(user.sub);
+  await audit({ tenantId: user.tenantId, userId: user.sub, action: "LOGOUT_ALL", ip: request.ip });
+  return { ok: true };
+});
+
+app.get("/v1/auth/sessions", { preHandler: requireAuth }, async (request) => listActiveSessions(claims(request).sub));
+
+/** Configuración pública para la pantalla de ingreso (sin datos sensibles salvo la demo pública). */
+app.get("/v1/public-config", async () => ({
+  demo: demoPublicLogin ? { email: DEMO_EMAIL, password: DEMO_PASSWORD, business: "Bodega Don Pepe" } : null
+}));
+
+/** Salud profunda: base de datos y documentos atascados (para monitoreo externo). */
+app.get("/health/ready", async (_request, reply) => {
+  try {
+    await sql`select 1`;
+    const stuck = await stuckDocuments();
+    return { ok: true, database: "up", stuck };
+  } catch {
+    return reply.code(503).send({ ok: false, database: "down" });
+  }
 });
 
 app.get("/v1/audit", { preHandler: [requireAuth, requireTenantAdmin] }, async (request) => listAudit(claims(request).tenantId, 100));
@@ -1062,7 +1140,8 @@ if (webDist && existsSync(resolve(webDist, "index.html"))) {
   app.log.info({ webDist }, "serving FAKTU web app");
 }
 
-const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
+// PORT lo asignan las plataformas (Render, Railway, Fly); API_PORT es el valor local.
+const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
 
 // Demo en línea: carga el negocio de ejemplo la primera vez (idempotente).

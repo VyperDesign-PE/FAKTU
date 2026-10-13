@@ -1,6 +1,6 @@
 import type { AuthSession } from "../auth/types";
 import type { BusinessProfile, PaymentMethod, PendingReceipt, Product } from "../domain/types";
-import { getAccessToken } from "../storage/session";
+import { clearSession, getAccessToken, loadSession, notifySessionInvalid, saveSession } from "../storage/session";
 
 import { Platform } from "react-native";
 
@@ -23,13 +23,63 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+let refreshing: Promise<boolean> | null = null;
+
+/**
+ * Renueva la sesión con el token rotativo. Una sola renovación a la vez: si
+ * varias llamadas reciben 401 juntas, todas esperan la misma.
+ */
+async function refreshSession(): Promise<boolean> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    const current = await loadSession();
+    if (!current?.refreshToken) return false;
+    try {
+      const response = await fetch(`${API_URL}/v1/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: current.refreshToken })
+      });
+      if (response.status === 401 || response.status === 400) {
+        await clearSession();
+        notifySessionInvalid();
+        return false;
+      }
+      if (!response.ok) return false;
+      await saveSession(await response.json() as AuthSession);
+      return true;
+    } catch {
+      // Sin conexión: se conserva la sesión para reintentar cuando vuelva Internet.
+      return false;
+    }
+  })().finally(() => { refreshing = null; });
+  return refreshing;
+}
+
 async function authorizedFetch(path: string, init: RequestInit = {}) {
-  const headers = {
-    ...(init.body ? { "Content-Type": "application/json" } : {}),
-    ...(await authHeaders()),
-    ...(init.headers ?? {})
-  };
-  return fetch(`${API_URL}${path}`, { ...init, headers });
+  const send = async () => fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(await authHeaders()),
+      ...(init.headers ?? {})
+    }
+  });
+  const response = await send();
+  if (response.status !== 401) return response;
+  return (await refreshSession()) ? send() : response;
+}
+
+export async function logoutRemote() {
+  await authorizedFetch("/v1/auth/logout", { method: "POST" }).catch(() => undefined);
+}
+
+export async function logoutAllDevices() {
+  return json<{ ok: true }>(await authorizedFetch("/v1/auth/logout-all", { method: "POST" }));
+}
+
+export async function getPublicConfig() {
+  return json<{ demo: { email: string; password: string; business: string } | null }>(await fetch(`${API_URL}/v1/public-config`));
 }
 
 export type LoginResult = AuthSession | { mfaRequired: true; mfaToken: string };
@@ -51,7 +101,7 @@ export async function verifyMfaLogin(mfaToken: string, code: string) {
 }
 
 export async function getMfaStatus() {
-  return json<{ enabled: boolean }>(await authorizedFetch("/v1/auth/mfa/status"));
+  return json<{ enabled: boolean; recoveryCodesLeft?: number }>(await authorizedFetch("/v1/auth/mfa/status"));
 }
 
 export async function startMfaSetup() {
@@ -59,7 +109,7 @@ export async function startMfaSetup() {
 }
 
 export async function enableMfa(code: string) {
-  return json<{ enabled: boolean }>(await authorizedFetch("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) }));
+  return json<{ enabled: boolean; recoveryCodes: string[] }>(await authorizedFetch("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) }));
 }
 
 export async function disableMfa(code: string) {

@@ -10,6 +10,7 @@ const PILOT_FEATURES_MIGRATION_ID = "20261012_007_payments_credit_notes";
 const DOCUMENT_SUITE_MIGRATION_ID = "20261012_008_notes_voidings_despatch";
 const STOCK_RECEIVABLES_MIGRATION_ID = "20261013_009_stock_receivables";
 const SECURITY_MIGRATION_ID = "20261014_010_security_vault_audit_mfa";
+const SESSIONS_MIGRATION_ID = "20261015_011_sessions_recovery_codes";
 
 /**
  * Migración idempotente del MVP 1.0.
@@ -691,6 +692,50 @@ export async function runMigrations() {
       await tx`
         insert into schema_migrations (id)
         values (${SECURITY_MIGRATION_ID})
+        on conflict do nothing
+      `;
+    });
+  }
+
+  const sessionsApplied = await sql`
+    select id from schema_migrations where id = ${SESSIONS_MIGRATION_ID} limit 1
+  `;
+  if (!sessionsApplied.length) {
+    await sql.begin(async (tx) => {
+      // Sesiones con renovación rotativa: el token de acceso dura minutos y el de
+      // renovación se guarda solo como hash. Reusar un token ya rotado revoca toda
+      // la familia (señal de robo).
+      await tx`
+        create table if not exists auth_sessions (
+          id uuid primary key,
+          user_id uuid not null references app_users(id) on delete cascade,
+          family_id uuid not null,
+          token_hash text not null unique,
+          expires_at timestamptz not null,
+          revoked_at timestamptz,
+          replaced_by uuid,
+          user_agent text,
+          ip text,
+          created_at timestamptz not null default now(),
+          last_used_at timestamptz not null default now()
+        )
+      `;
+      await tx`create index if not exists idx_auth_sessions_user on auth_sessions (user_id) where revoked_at is null`;
+      await tx`create index if not exists idx_auth_sessions_family on auth_sessions (family_id)`;
+
+      // Códigos de recuperación de 2FA (un solo uso, guardados como hash).
+      await tx`
+        create table if not exists user_mfa_recovery_codes (
+          user_id uuid not null references app_users(id) on delete cascade,
+          code_hash text not null,
+          used_at timestamptz,
+          primary key (user_id, code_hash)
+        )
+      `;
+
+      await tx`
+        insert into schema_migrations (id)
+        values (${SESSIONS_MIGRATION_ID})
         on conflict do nothing
       `;
     });

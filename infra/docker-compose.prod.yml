@@ -39,10 +39,18 @@ services:
       ALLOW_MOCK_BILLING: ${ALLOW_MOCK_BILLING:-true}
       DELIVERY_PROVIDER: mock
       DEMO_AUTOSEED: ${DEMO_AUTOSEED:-false}
+      DEMO_PUBLIC_LOGIN: ${DEMO_PUBLIC_LOGIN:-false}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
     env_file:
       # Credenciales de proveedor (alternativa a la bóveda): ver docs/PILOTO.md
       - path: .env.providers
         required: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy

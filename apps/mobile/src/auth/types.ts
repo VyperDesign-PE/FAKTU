@@ -6,5 +6,7 @@ export type AuthUser = {
 
 export type AuthSession = {
   accessToken: string;
+  /** Token de renovación rotativo (el de acceso dura minutos). */
+  refreshToken?: string;
   user: AuthUser;
 };

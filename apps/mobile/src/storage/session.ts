@@ -43,3 +43,13 @@ export async function clearSession(): Promise<void> {
 export async function getAccessToken(): Promise<string | null> {
   return (await loadSession())?.accessToken ?? null;
 }
+
+// Avisos a la app cuando la sesión deja de ser válida (renovación rechazada).
+const invalidListeners = new Set<() => void>();
+export function onSessionInvalid(listener: () => void) {
+  invalidListeners.add(listener);
+  return () => { invalidListeners.delete(listener); };
+}
+export function notifySessionInvalid() {
+  for (const listener of invalidListeners) listener();
+}

@@ -683,7 +683,8 @@ async function main() {
   const setup = await request<{ secret: string; otpauthUrl: string }>("/v1/auth/mfa/setup", { method: "POST" }, secToken);
   assert.match(setup.otpauthUrl, /^otpauth:\/\/totp\/Faktu:/);
   assert.equal((await rawRequest("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code: "000000" }) }, secToken)).status, 400, "Wrong TOTP is rejected");
-  await request("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code: totpCode(setup.secret) }) }, secToken);
+  const enabled = await request<{ recoveryCodes: string[] }>("/v1/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code: totpCode(setup.secret) }) }, secToken);
+  assert.equal(enabled.recoveryCodes.length, 8, "Eight recovery codes are shown once");
   const stepOne = await rawRequest("/v1/auth/login", { method: "POST", body: JSON.stringify({ email: `sec-${suffix}@example.test`, password: "E2ePassword123!" }) });
   assert.equal(stepOne.body.mfaRequired, true);
   assert.equal(stepOne.body.accessToken, undefined, "Password alone must not open a session");
@@ -692,6 +693,35 @@ async function main() {
   assert.equal((await rawRequest("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken, code: "123456" === totpCode(setup.secret) ? "654321" : "123456" }) })).status, 401);
   const session = await request<{ accessToken: string }>("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken, code: totpCode(setup.secret) }) });
   assert.equal((await rawRequest("/v1/auth/me", {}, session.accessToken)).status, 200);
+
+  // Código de recuperación: sirve una sola vez.
+  const recoveryLogin = async () => {
+    const first = await rawRequest("/v1/auth/login", { method: "POST", body: JSON.stringify({ email: `sec-${suffix}@example.test`, password: "E2ePassword123!" }) });
+    return rawRequest("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken: first.body.mfaToken, code: enabled.recoveryCodes[0] }) });
+  };
+  assert.equal((await recoveryLogin()).status, 200, "Recovery code opens a session");
+  assert.equal((await recoveryLogin()).status, 401, "Recovery code cannot be reused");
+
+  // Sesiones: renovación rotativa, reuso detectado y cierre de sesión inmediato.
+  const s1 = session as unknown as { accessToken: string; refreshToken: string };
+  assert.ok(s1.refreshToken, "Session returns a refresh token");
+  const r1 = await request<{ accessToken: string; refreshToken: string }>("/v1/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: s1.refreshToken }) });
+  assert.notEqual(r1.refreshToken, s1.refreshToken, "Refresh token rotates");
+  assert.equal((await rawRequest("/v1/auth/me", {}, s1.accessToken)).status, 401, "Old access token dies with its rotated session");
+  assert.equal((await rawRequest("/v1/auth/me", {}, r1.accessToken)).status, 200);
+  assert.equal((await rawRequest("/v1/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: s1.refreshToken }) })).status, 401, "Reused refresh token is rejected");
+  assert.equal((await rawRequest("/v1/auth/me", {}, r1.accessToken)).status, 401, "Reuse revokes the whole device family");
+  const fresh = await rawRequest("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken: (await rawRequest("/v1/auth/login", { method: "POST", body: JSON.stringify({ email: `sec-${suffix}@example.test`, password: "E2ePassword123!" }) })).body.mfaToken, code: totpCode(setup.secret) }) });
+  const freshToken = String(fresh.body.accessToken);
+  await request("/v1/auth/logout", { method: "POST" }, freshToken);
+  assert.equal((await rawRequest("/v1/auth/me", {}, freshToken)).status, 401, "Logout invalidates the access token immediately");
+  const again = await rawRequest("/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ mfaToken: (await rawRequest("/v1/auth/login", { method: "POST", body: JSON.stringify({ email: `sec-${suffix}@example.test`, password: "E2ePassword123!" }) })).body.mfaToken, code: totpCode(setup.secret) }) });
+  Object.assign(session, again.body);
+
+  const ready = await request<{ ok: boolean; database: string }>("/health/ready");
+  assert.equal(ready.database, "up");
+  assert.equal((await request<{ demo: unknown }>("/v1/public-config")).demo, null, "Public demo login is off by default");
+
   assert.equal((await rawRequest("/v1/auth/mfa/disable", { method: "POST", body: JSON.stringify({ code: totpCode(setup.secret) }) }, session.accessToken)).status, 200);
 
   const audited = await request<Array<{ action: string }>>("/v1/audit", {}, tokenB);

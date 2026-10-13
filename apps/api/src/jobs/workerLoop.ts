@@ -4,6 +4,7 @@ import { processPendingReceipts } from "../modules/receipts/receiptIssuer.js";
 import { processPendingVoidings } from "../modules/voidings/voidingService.js";
 import { processPendingGuides } from "../modules/despatch/despatchService.js";
 import { archivePendingFiles } from "../modules/receipts/archive.js";
+import { checkAndAlertStuckDocuments, sendAlert } from "../modules/ops/alerts.js";
 
 const ADVISORY_LOCK_ID = 727_001;
 
@@ -25,6 +26,7 @@ export async function runWorkerCycle(billingService: BillingService, log: (messa
     if (processed.length) log("pending documents processed", processed);
     const archived = await archivePendingFiles();
     if (archived) log("provider files archived", archived);
+    await checkAndAlertStuckDocuments();
   });
 }
 
@@ -35,7 +37,10 @@ export function startWorker(billingService: BillingService, log: (message: strin
   const timer = setInterval(async () => {
     if (running) return;
     running = true;
-    try { await runWorkerCycle(billingService, log); } catch (error) { onError(error); } finally { running = false; }
+    try { await runWorkerCycle(billingService, log); } catch (error) {
+      onError(error);
+      await sendAlert("worker", `El worker falló: ${error instanceof Error ? error.message : String(error)}`);
+    } finally { running = false; }
   }, intervalMs);
   timer.unref();
   return timer;

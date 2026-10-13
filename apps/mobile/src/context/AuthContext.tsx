@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { AuthSession, AuthUser } from "../auth/types";
-import { loginWithEmail, registerWithEmail, verifyMfaLogin } from "../services/api";
-import { clearSession, loadSession, saveSession } from "../storage/session";
+import { loginWithEmail, logoutRemote, registerWithEmail, verifyMfaLogin } from "../services/api";
+import { clearSession, loadSession, onSessionInvalid, saveSession } from "../storage/session";
 
 type AuthContextValue = {
   hydrated: boolean;
@@ -25,6 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadSession()
       .then(setSession)
       .finally(() => setHydrated(true));
+    // Si la renovación es rechazada (sesión cerrada en otro lado o token robado), vuelve al ingreso.
+    return onSessionInvalid(() => setSession(null));
   }, []);
 
   const persist = useCallback(async (next: AuthSession) => {
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [persist]);
 
   const signOut = useCallback(async () => {
+    await logoutRemote();
     setSession(null);
     await clearSession();
   }, []);
